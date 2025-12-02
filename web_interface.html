@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatGPT Style RAG Chatbot</title>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f7f7f8;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .chat-wrapper {
+            width: 900px;
+            height: 90vh;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            padding: 18px;
+            background: white;
+            border-bottom: 1px solid #e5e5e5;
+            font-size: 20px;
+            font-weight: bold;
+        }
+
+        .status {
+            text-align: center;
+            padding: 8px;
+            font-size: 12px;
+            color: #666;
+            border-bottom: 1px solid #eee;
+        }
+
+        .status.connected { color: #10a37f; }
+        .status.error { color: #d33; }
+
+        .messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+            background: #f7f7f8;
+        }
+
+        .msg {
+            max-width: 75%;
+            padding: 12px 16px;
+            border-radius: 10px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .user {
+            align-self: flex-end;
+            background: #d1e8ff;
+        }
+
+        .bot {
+            align-self: flex-start;
+            background: #e9e9e9;
+        }
+
+        .typing {
+            width: 60px;
+            height: 25px;
+            border-radius: 10px;
+            background: #e5e5e5;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #666;
+            animation: bounce 1.4s infinite;
+        }
+
+        .dot:nth-child(2) { animation-delay: 0.2s; }
+        .dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); }
+            30% { transform: translateY(-6px); }
+        }
+
+        .input-area {
+            padding: 16px;
+            background: white;
+            border-top: 1px solid #eee;
+            display: flex;
+            gap: 10px;
+        }
+
+        textarea {
+            flex: 1;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #ccc;
+            resize: none;
+            height: 55px;
+            font-size: 15px;
+            outline: none;
+        }
+
+        button {
+            padding: 12px 18px;
+            background: #10a37f;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 15px;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-wrapper">
+        <div class="chat-header">RAG Chatbot</div>
+        <div class="status" id="status">Connecting...</div>
+
+        <div class="messages" id="messages">
+            <div class="msg bot">Welcome! Type "Hello" to begin.</div>
+        </div>
+
+        <div class="input-area">
+            <textarea id="input" placeholder="Type your message..."></textarea>
+            <button onclick="sendMsg()">Send</button>
+        </div>
+    </div>
+
+<script>
+const API_URL = 'http://localhost:8000';
+let sessionState = null;
+let waiting = false;
+
+function addMessage(text, isUser) {
+    const msgBox = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg ' + (isUser ? 'user' : 'bot');
+    div.textContent = text;
+    msgBox.appendChild(div);
+    msgBox.scrollTop = msgBox.scrollHeight;
+}
+
+function showTyping() {
+    const msgBox = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg bot';
+    div.id = 'typing';
+    div.innerHTML = '<div class="typing"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>';
+    msgBox.appendChild(div);
+    msgBox.scrollTop = msgBox.scrollHeight;
+}
+
+function hideTyping() {
+    const t = document.getElementById('typing');
+    if (t) t.remove();
+}
+
+async function sendMsg() {
+    if (waiting) return;
+
+    const input = document.getElementById('input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    addMessage(text, true);
+    input.value = '';
+
+    waiting = true;
+    showTyping();
+    updateStatus('Bot is typing...');
+
+    try {
+        const res = await fetch(`${API_URL}/api/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_message: text,
+                session_state: sessionState
+            })
+        });
+
+        hideTyping();
+
+        if (!res.ok) throw new Error();
+        const data = await res.json();
+
+        addMessage(data.bot_message, false);
+        sessionState = data.session_state;
+
+        updateStatus('Connected - Ready', 'connected');
+    } catch (err) {
+        hideTyping();
+        addMessage('⚠️ Error connecting to server', false);
+        updateStatus('Server Error', 'error');
+    }
+
+    waiting = false;
+}
+
+function updateStatus(text, type = '') {
+    const s = document.getElementById('status');
+    s.textContent = text;
+    s.className = 'status';
+    if (type) s.classList.add(type);
+}
+
+window.onload = async () => {
+    try {
+        const res = await fetch(`${API_URL}/api/health`);
+        if (res.ok) updateStatus('Connected - Ready', 'connected');
+        else updateStatus('Server offline', 'error');
+    } catch {
+        updateStatus('Server offline', 'error');
+    }
+};
+</script>
+</body>
+</html>
