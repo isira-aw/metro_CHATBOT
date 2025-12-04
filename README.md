@@ -1,35 +1,35 @@
-# RAG Chatbot with LangChain, FastAPI, Gemini, Pinecone & PostgreSQL
+# Metro Chatbot - Technical Support System
 
-A conversational AI chatbot with RAG (Retrieval-Augmented Generation) architecture that manages user authentication, stores chat history, and answers questions using a knowledge base.
+A FastAPI-based chatbot for technical support in solar systems, generators, inverters, and electrical systems. The chatbot provides technical help, manages company data, and makes intelligent recommendations based on user queries.
 
 ## Features
 
-- **Conversational Flow**: Tree-based conversation with user registration/login
-- **RAG Architecture**: Uses Pinecone vector database for knowledge retrieval
-- **Gemini AI**: Powered by Google's Gemini Pro LLM
-- **User Management**: PostgreSQL database for user profiles
-- **Chat History**: Stores complete conversation sessions
-- **Document Ingestion**: API endpoint to add documents to knowledge base
+- **Technical Support**: Help with solar systems, generators, inverters, and electrical systems
+- **Smart Recommendations**: Suggests products, technicians, and sales staff based on user needs
+- **User Management**: Account creation and login system
+- **Company Data Management**: Manage products, technicians, salesmen, and employees
+- **Conversation History**: Stores all conversations for logged-in users
+- **Strict JSON Format**: All responses follow a consistent JSON structure
+- **Personalization**: Uses user profile and conversation history
 
 ## Architecture
 
 ```
-User Input → FastAPI → Chatbot Service → Gemini LLM
-                  ↓                           ↓
-            PostgreSQL              Pinecone Vector DB
-            (Users & Chat)          (Knowledge Base)
+User → FastAPI → Chatbot Service
+                      ↓
+                 PostgreSQL
+          (Users, Products, Technicians,
+           Salesmen, Employees, Chat History)
 ```
 
 ## Prerequisites
 
 - Python 3.9+
 - PostgreSQL database
-- Google Gemini API key
-- Pinecone account and API key
 
 ## Installation
 
-1. **Clone/Extract the project**
+1. **Clone the repository**
 
 2. **Install dependencies**:
 ```bash
@@ -37,303 +37,388 @@ pip install -r requirements.txt
 ```
 
 3. **Set up environment variables**:
-```bash
-cp .env.example .env
-```
-
-Edit `.env` file with your credentials:
+Create a `.env` file:
 ```env
-GOOGLE_API_KEY=your_gemini_api_key
-PINECONE_API_KEY=your_pinecone_api_key
-PINECONE_ENVIRONMENT=your_pinecone_environment
-PINECONE_INDEX_NAME=chatbot-knowledge
-DATABASE_URL=postgresql://username:password@localhost:5432/chatbot_db
+DATABASE_URL=postgresql://username:password@localhost:5432/metro_chatbot
+APP_HOST=0.0.0.0
+APP_PORT=8000
 ```
 
 4. **Set up PostgreSQL database**:
 ```bash
-# Create database
-createdb chatbot_db
-
-# Or using psql
-psql -U postgres
-CREATE DATABASE chatbot_db;
+createdb metro_chatbot
 ```
-
-5. **Initialize database tables**:
-The tables will be created automatically when you start the application.
 
 ## Running the Application
 
-Start the FastAPI server:
+Start the server:
 ```bash
 python main.py
 ```
 
-Or using uvicorn directly:
+Or using uvicorn:
 ```bash
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-The API will be available at: `http://localhost:8000`
-
-API Documentation: `http://localhost:8000/docs`
+Access the API:
+- API: `http://localhost:8000`
+- Documentation: `http://localhost:8000/docs`
 
 ## API Endpoints
 
-### 1. Chat Endpoint
+### Chat Endpoint
+
 **POST** `/api/chat`
 
-Send messages to the chatbot:
+The main chatbot endpoint. Always returns JSON in the specified format.
 
+**Request:**
 ```json
 {
-  "user_message": "Hello",
-  "session_state": null
+  "user_message": "I have a solar panel problem",
+  "session_state": {},
+  "user_profile": {
+    "name": "John",
+    "email": "john@example.com",
+    "phone": "1234567890"
+  },
+  "conversation_history": []
 }
 ```
 
-Response:
+**Response:**
 ```json
 {
-  "bot_message": "Hello there! ...",
-  "session_state": {
-    "state": "initial",
-    "conversation": [...]
+  "bot_message": "I understand you're having issues with your solar system...",
+  "recommends": {
+    "products": [],
+    "technicians": [
+      {
+        "name": "Alex",
+        "speciality": "Solar Systems",
+        "contact": "0771234567"
+      }
+    ],
+    "salesman": [],
+    "extra_info": "A qualified technician can diagnose and resolve your solar system issues."
+  },
+  "next_step": [
+    "Contact technician",
+    "Ask another question",
+    "Start over"
+  ],
+  "debug": {
+    "state": "active_chat",
+    "timestamp": "2025-12-04T10:00:00Z"
   }
 }
 ```
 
-### 2. Add Documents
-**POST** `/api/documents/add`
+### Product Management
 
-Add documents to knowledge base:
+- **POST** `/api/products` - Create a product
+- **GET** `/api/products` - Get all products (filter by `?category=solar`)
+- **GET** `/api/products/{id}` - Get product by ID
+- **PUT** `/api/products/{id}` - Update a product
+- **DELETE** `/api/products/{id}` - Delete a product
 
+**Create Product Example:**
 ```json
 {
-  "text": "Your document content here...",
-  "metadata": {
-    "source": "document_name",
-    "category": "information"
-  }
+  "name": "5kW Solar System",
+  "category": "solar",
+  "description": "Complete 5kW solar system with panels, inverter, and mounting",
+  "specifications": {
+    "power": "5kW",
+    "panels": "10x 500W",
+    "inverter": "5kW hybrid"
+  },
+  "price": 5000.00
 }
 ```
 
-### 3. Get All Users
-**GET** `/api/users`
+### Technician Management
 
-### 4. Get User by Email
-**GET** `/api/users/{email}`
+- **POST** `/api/technicians` - Create a technician
+- **GET** `/api/technicians` - Get all technicians (filter by `?speciality=solar`)
+- **GET** `/api/technicians/{id}` - Get technician by ID
+- **PUT** `/api/technicians/{id}` - Update a technician
+- **DELETE** `/api/technicians/{id}` - Delete a technician
 
-### 5. Get Chat History
-**GET** `/api/chat-history/{email}`
+**Create Technician Example:**
+```json
+{
+  "name": "Alex Johnson",
+  "speciality": "Solar Systems",
+  "contact": "0771234567",
+  "email": "alex@example.com",
+  "experience_years": 5
+}
+```
 
-### 6. Create User Manually
-**POST** `/api/users`
+### Salesman Management
 
-### 7. Delete User
-**DELETE** `/api/users/{email}`
+- **POST** `/api/salesmen` - Create a salesman
+- **GET** `/api/salesmen` - Get all salesmen (filter by `?speciality=solar`)
+- **GET** `/api/salesmen/{id}` - Get salesman by ID
+- **PUT** `/api/salesmen/{id}` - Update a salesman
+- **DELETE** `/api/salesmen/{id}` - Delete a salesman
+
+**Create Salesman Example:**
+```json
+{
+  "name": "Sahan Perera",
+  "speciality": "Solar",
+  "contact": "0771234567",
+  "email": "sahan@example.com"
+}
+```
+
+### Employee Management
+
+- **POST** `/api/employees` - Create an employee
+- **GET** `/api/employees` - Get all employees (filter by `?department=technical`)
+- **GET** `/api/employees/{id}` - Get employee by ID
+- **PUT** `/api/employees/{id}` - Update an employee
+- **DELETE** `/api/employees/{id}` - Delete an employee
+
+### User Management
+
+- **POST** `/api/users` - Create a user
+- **GET** `/api/users` - Get all users
+- **GET** `/api/users/{email}` - Get user by email
+- **DELETE** `/api/users/{email}` - Delete a user
+
+### Chat History
+
+- **GET** `/api/chat-history/{email}` - Get chat history for a user
 
 ## Conversation Flow
 
-1. **Initial Greeting**:
-   - Bot asks: "Hello there! Choose: 1) Ask something 2) Have account 3) Login"
+### 1. Start
+```
+Bot: "Hello there,
+1) Ask some questions
+2) Create an account
+3) Log in"
+```
 
-2. **Option 1 - Direct Questions**:
-   - User can ask questions immediately
-   - Bot uses RAG to answer from knowledge base
+### 2. Option 1 - Ask Questions
+User can ask technical questions without login. Bot provides:
+- Technical explanations
+- Product recommendations
+- Technician/salesman recommendations based on need
 
-3. **Option 2/3 - Login/Register**:
-   - **Existing User**: Enter email → Bot greets by name
-   - **New User**: Enter email → Enter name → Enter phone → Registration complete
+### 3. Option 2 - Create Account
+```
+Bot: "Please enter your email:"
+User: "john@example.com"
+Bot: "Please enter your name:"
+User: "John Doe"
+Bot: "Please enter your mobile number:"
+User: "1234567890"
+Bot: "John Doe, your account has been created! How can I help you?"
+```
 
-4. **Active Chat**:
-   - User asks questions
-   - Bot retrieves relevant context from Pinecone
-   - Gemini generates answers using retrieved context
+### 4. Option 3 - Login
+```
+Bot: "Please enter your email:"
+User: "john@example.com"
+Bot: "Welcome back John Doe, how can I help you?"
+```
 
-## Usage Example
+### 5. Active Chat
+Once logged in or in "Ask Questions" mode, users can:
+- Ask about solar systems, generators, inverters, electrical systems
+- Get load calculations help
+- Request product recommendations
+- Get connected with technicians for problems
+- Get connected with salesmen for purchases
 
-### 1. First Time Chat (Python)
+## Recommendation Logic
+
+The chatbot intelligently recommends based on user intent:
+
+### When user has a problem:
+- **Recommends**: Technicians matching the category
+- **Example**: "My generator is not starting" → Recommends generator technicians
+
+### When user wants to buy:
+- **Recommends**: Products and Salesmen matching the category
+- **Example**: "I want to buy a solar system" → Recommends solar products and solar sales staff
+
+### General technical questions:
+- **Provides**: Technical explanations
+- **May recommend**: Products, technicians, or salesmen based on context
+
+## Database Schema
+
+### Users
+- id, email (unique), name, mobile_number, created_at
+
+### Products
+- id, name, category, description, specifications (JSON), price, created_at
+
+### Technicians
+- id, name, speciality, contact, email, experience_years, created_at
+
+### Salesmen
+- id, name, speciality, contact, email, created_at
+
+### Employees
+- id, name, position, department, contact, email, created_at
+
+### Chat History
+- id, email (FK), date, conversation (JSON)
+
+## Usage Examples
+
+### Python Example
 
 ```python
 import requests
 
 BASE_URL = "http://localhost:8000"
 
-# Initial message
+# Add sample products
+requests.post(f"{BASE_URL}/api/products", json={
+    "name": "10kW Solar System Complete Package",
+    "category": "solar",
+    "description": "Complete 10kW solar system with 20x500W panels, 10kW hybrid inverter, and 10kWh battery",
+    "price": 8500.00
+})
+
+# Add sample technician
+requests.post(f"{BASE_URL}/api/technicians", json={
+    "name": "Alex Johnson",
+    "speciality": "Solar Systems",
+    "contact": "0771234567",
+    "experience_years": 5
+})
+
+# Add sample salesman
+requests.post(f"{BASE_URL}/api/salesmen", json={
+    "name": "Sahan Perera",
+    "speciality": "Solar",
+    "contact": "0771234567"
+})
+
+# Start chat
 response = requests.post(f"{BASE_URL}/api/chat", json={
-    "user_message": "Hello",
-    "session_state": None
+    "user_message": "Hello"
 })
-
-session_state = response.json()["session_state"]
-print(response.json()["bot_message"])
-
-# Choose option 2 (register)
-response = requests.post(f"{BASE_URL}/api/chat", json={
-    "user_message": "2",
-    "session_state": session_state
-})
-
-session_state = response.json()["session_state"]
-print(response.json()["bot_message"])
-
-# Provide email
-response = requests.post(f"{BASE_URL}/api/chat", json={
-    "user_message": "isira123@gmail.com",
-    "session_state": session_state
-})
-
-session_state = response.json()["session_state"]
-print(response.json()["bot_message"])
-
-# Provide name
-response = requests.post(f"{BASE_URL}/api/chat", json={
-    "user_message": "Isira Adithya",
-    "session_state": session_state
-})
-
-session_state = response.json()["session_state"]
-print(response.json()["bot_message"])
-
-# Provide phone number
-response = requests.post(f"{BASE_URL}/api/chat", json={
-    "user_message": "0710540195",
-    "session_state": session_state
-})
-
-session_state = response.json()["session_state"]
-print(response.json()["bot_message"])
-
-# Ask question
-response = requests.post(f"{BASE_URL}/api/chat", json={
-    "user_message": "What services do you offer?",
-    "session_state": session_state
-})
-
-print(response.json()["bot_message"])
-```
-
-### 2. Add Documents to Knowledge Base
-
-```python
-import requests
-
-response = requests.post("http://localhost:8000/api/documents/add", json={
-    "text": """
-    Our company offers various services including:
-    - AI Consulting
-    - Machine Learning Solutions
-    - Data Analytics
-    - Cloud Infrastructure Setup
-    
-    We specialize in helping businesses leverage AI technology.
-    """,
-    "metadata": {
-        "source": "services_document",
-        "category": "company_info"
-    }
-})
-
 print(response.json())
+
+# Choose option 1 (ask questions)
+session = response.json()["debug"]["session_state"]
+response = requests.post(f"{BASE_URL}/api/chat", json={
+    "user_message": "1",
+    "session_state": session
+})
+print(response.json())
+
+# Ask about solar
+session = response.json()["debug"]["session_state"]
+response = requests.post(f"{BASE_URL}/api/chat", json={
+    "user_message": "I want to buy a solar system for my home",
+    "session_state": session
+})
+print(response.json())
+# This will recommend products and salesmen
 ```
 
-### 3. Using cURL
+### cURL Example
 
 ```bash
+# Add a product
+curl -X POST "http://localhost:8000/api/products" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "5kW Solar System",
+    "category": "solar",
+    "description": "Complete 5kW solar system",
+    "price": 5000.00
+  }'
+
 # Chat
 curl -X POST "http://localhost:8000/api/chat" \
   -H "Content-Type: application/json" \
-  -d '{"user_message": "Hello", "session_state": null}'
-
-# Add document
-curl -X POST "http://localhost:8000/api/documents/add" \
-  -H "Content-Type: application/json" \
-  -d '{"text": "Your document content", "metadata": {"source": "test"}}'
-
-# Get chat history
-curl "http://localhost:8000/api/chat-history/isira123@gmail.com"
+  -d '{
+    "user_message": "I have a generator problem"
+  }'
 ```
-
-## Database Schema
-
-### Users Table
-- `id`: Integer (Primary Key)
-- `email`: String (Unique)
-- `name`: String
-- `mobile_number`: String
-- `created_at`: DateTime
-
-### Chat History Table
-- `id`: Integer (Primary Key)
-- `email`: String (Foreign Key)
-- `date`: DateTime
-- `conversation`: JSON (Array of messages)
 
 ## Project Structure
 
 ```
-chatbot_project/
-├── main.py                 # FastAPI application
-├── chatbot_service.py      # Chatbot logic & conversation flow
-├── pinecone_service.py     # Pinecone vector database operations
-├── database.py             # SQLAlchemy models & database setup
-├── models.py               # Pydantic models for validation
-├── requirements.txt        # Python dependencies
-├── .env.example           # Environment variables template
-└── README.md              # This file
+metro_CHATBOT/
+├── app/
+│   ├── chatbot_service.py    # Chatbot logic and conversation flow
+│   ├── database.py            # SQLAlchemy models
+│   └── models.py              # Pydantic models
+├── main.py                    # FastAPI application
+├── requirements.txt           # Dependencies
+├── .env                       # Environment variables
+└── README.md                  # This file
 ```
 
-## Key Components
+## Key Features
 
-1. **ChatbotService**: Manages conversation flow, user registration, and RAG queries
-2. **PineconeService**: Handles document embedding, storage, and retrieval
-3. **Database Models**: SQLAlchemy models for users and chat history
-4. **FastAPI Routes**: RESTful API endpoints
+### 1. Intent Analysis
+The chatbot analyzes user messages to determine:
+- Problem/fault keywords → Recommend technician
+- Buying intent keywords → Recommend products and salesman
+- Category (solar, generator, inverter, electrical)
 
-## Troubleshooting
+### 2. Personalization
+- Uses user name in responses when available
+- Stores conversation history for logged-in users
+- Maintains session state across messages
 
-### Pinecone Connection Issues
-- Verify API key and environment in `.env`
-- Check if index exists in Pinecone dashboard
-- Ensure correct dimension (768 for Gemini embeddings)
+### 3. Data-Driven Recommendations
+- Searches internal database for matching products
+- Finds technicians by speciality
+- Connects users with appropriate salesmen
 
-### Database Connection
-- Verify PostgreSQL is running
-- Check DATABASE_URL format
-- Ensure database exists
+### 4. Strict JSON Format
+All responses follow the exact format:
+```json
+{
+  "bot_message": "string",
+  "recommends": {
+    "products": ["string"],
+    "technicians": [{"name": "", "speciality": "", "contact": ""}],
+    "salesman": [{"name": "", "speciality": "", "contact": ""}],
+    "extra_info": "string"
+  },
+  "next_step": ["string"],
+  "debug": {}
+}
+```
 
-### Gemini API Errors
-- Verify GOOGLE_API_KEY is valid
-- Check API quota limits
-- Review Gemini API documentation
+## Categories Supported
 
-## Features in Detail
+- **Solar**: Solar panels, solar systems, solar inverters, solar batteries
+- **Generator**: Portable generators, standby generators, diesel generators
+- **Inverter**: Pure sine wave inverters, UPS inverters, hybrid inverters
+- **Electrical**: Electrical systems, wiring, load calculations, fault diagnosis
 
-### RAG (Retrieval-Augmented Generation)
-- Documents are split into chunks (1000 chars, 200 overlap)
-- Chunks are embedded using Gemini embeddings
-- Stored in Pinecone vector database
-- Retrieved based on similarity to user query
-- Fed to Gemini LLM as context for answers
+## Technical Support Topics
 
-### Session Management
-- Session state tracks conversation progress
-- Maintains user context across messages
-- Stores conversation history in JSON format
-
-### Smart Extraction
-- Email extraction using regex
-- Phone number extraction (10 digits)
-- Name extraction from natural text
+- Load calculations
+- Fault diagnosis and troubleshooting
+- System sizing and selection
+- Product specifications
+- Installation guidance
+- Maintenance advice
 
 ## Security Notes
 
-- Store API keys in environment variables
+- Store DATABASE_URL in environment variables
 - Use HTTPS in production
-- Implement rate limiting
-- Add authentication for sensitive endpoints
+- Implement authentication for sensitive endpoints
+- Add rate limiting for chat endpoint
 - Validate all user inputs
 
 ## License
@@ -342,4 +427,4 @@ MIT License
 
 ## Support
 
-For issues or questions, please contact support or check the API documentation at `/docs`.
+For API documentation, visit: `http://localhost:8000/docs`
