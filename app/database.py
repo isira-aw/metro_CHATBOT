@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, JSON
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text, JSON, Float
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -11,7 +11,7 @@ Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
@@ -20,11 +20,54 @@ class User(Base):
 
 class ChatHistory(Base):
     __tablename__ = "chat_history"
-    
+
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, index=True, nullable=False)
     date = Column(DateTime, default=datetime.utcnow)
     conversation = Column(JSON, nullable=False)
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=False)  # solar, generator, inverter, electrical
+    description = Column(Text, nullable=False)
+    specifications = Column(JSON, nullable=True)
+    price = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Technician(Base):
+    __tablename__ = "technicians"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    speciality = Column(String, nullable=False)
+    contact = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    experience_years = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Salesman(Base):
+    __tablename__ = "salesmen"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    speciality = Column(String, nullable=False)
+    contact = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+class Employee(Base):
+    __tablename__ = "employees"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    position = Column(String, nullable=False)
+    department = Column(String, nullable=False)
+    contact = Column(String, nullable=False)
+    email = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 # Database setup
 DATABASE_URL = os.getenv("DATABASE_URL")

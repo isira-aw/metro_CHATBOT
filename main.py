@@ -2,13 +2,16 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from app.database import init_db, get_db, User, ChatHistory
+from app.database import (
+    init_db, get_db, User, ChatHistory, Product,
+    Technician, Salesman, Employee
+)
 from app.models import (
-    ChatMessage, ChatResponse, DocumentUpload, 
-    DocumentResponse, UserCreate, UserResponse
+    ChatMessage, ChatResponse, UserCreate, UserResponse,
+    ProductCreate, ProductResponse, TechnicianCreate, TechnicianResponse,
+    SalesmanCreate, SalesmanResponse, EmployeeCreate, EmployeeResponse
 )
 from app.chatbot_service import ChatbotService
-from app.pinecone_service import PineconeService
 from typing import List
 import uvicorn
 import os
@@ -18,9 +21,9 @@ load_dotenv()
 
 # Initialize FastAPI app
 app = FastAPI(
-    title="RAG Chatbot API",
-    description="Chatbot with LangChain, Gemini, Pinecone, and PostgreSQL",
-    version="1.0.0"
+    title="Metro Chatbot API",
+    description="Technical chatbot for solar systems, generators, inverters, and electrical systems",
+    version="2.0.0"
 )
 
 # CORS middleware
@@ -32,9 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
+# Initialize chatbot service
 chatbot_service = ChatbotService()
-pinecone_service = PineconeService()
 
 @app.on_event("startup")
 async def startup_event():
@@ -46,76 +48,81 @@ async def startup_event():
 async def root():
     """Root endpoint"""
     return {
-        "message": "RAG Chatbot API is running!",
+        "message": "Metro Chatbot API is running!",
+        "version": "2.0.0",
         "endpoints": {
             "chat": "/api/chat",
-            "add_documents": "/api/documents/add",
             "users": "/api/users",
-            "chat_history": "/api/chat-history/{email}"
+            "products": "/api/products",
+            "technicians": "/api/technicians",
+            "salesmen": "/api/salesmen",
+            "employees": "/api/employees"
         }
     }
+
+# ==================== CHAT ENDPOINT ====================
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(message: ChatMessage):
     """
-    Main chat endpoint
-    Processes user messages through the conversation flow
-    """
-    try:
-        bot_response, updated_session = chatbot_service.process_message(
-            user_message=message.user_message,
-            session_state=message.session_state
-        )
-        
-        return ChatResponse(
-            bot_message=bot_response,
-            session_state=updated_session
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Chat error: {str(e)}")
+    Main chat endpoint - Always returns JSON in specified format
 
-@app.post("/api/documents/add", response_model=DocumentResponse)
-async def add_documents(document: DocumentUpload):
+    Request:
+    {
+        "user_message": "string",
+        "session_state": {},  // optional
+        "user_profile": {},   // optional
+        "conversation_history": []  // optional
+    }
+
+    Response:
+    {
+        "bot_message": "string",
+        "recommends": {
+            "products": [],
+            "technicians": [],
+            "salesman": [],
+            "extra_info": ""
+        },
+        "next_step": [],
+        "debug": {}
+    }
     """
-    Add documents to Pinecone vector database
-    Text will be chunked and embedded automatically
-    """
-    print(f" [{datetime.now().isoformat()}] [INFO] Starting document upload process...")
-    print(f" [{datetime.now().isoformat()}] [DEBUG] Document length: {len(document.text)} characters")
-    
-    if document.metadata:
-        print(f" [DEBUG] Metadata provided: {document.metadata}")
-    
     try:
-        chunks_processed = pinecone_service.add_documents(
-            text=document.text,
-            metadata=document.metadata
+        response = chatbot_service.process_message(
+            user_message=message.user_message,
+            session_state=message.session_state,
+            user_profile=message.user_profile,
+            conversation_history=message.conversation_history
         )
-        
-        print(f" [INFO] Successfully processed {chunks_processed} chunks")
-        print(f" [INFO] Document upload completed successfully")
-        
-        return DocumentResponse(
-            message="Documents added successfully",
-            chunks_processed=chunks_processed
-        )
+        return response
     except Exception as e:
-        print(f" [ERROR] Failed to add documents: {str(e)}")
-        print(f" [ERROR] Error type: {type(e).__name__}")
-        raise HTTPException(status_code=500, detail=f"Error adding documents: {str(e)}")
+        # Even errors should return JSON format
+        return {
+            "bot_message": "I apologize, but I encountered an error processing your request. Please try again.",
+            "recommends": {
+                "products": [],
+                "technicians": [],
+                "salesman": [],
+                "extra_info": ""
+            },
+            "next_step": ["Start over"],
+            "debug": {
+                "error": str(e),
+                "timestamp": datetime.utcnow().isoformat()
+            }
+        }
+
+# ==================== USER MANAGEMENT ====================
 
 @app.post("/api/users", response_model=UserResponse)
 async def create_user(user: UserCreate, db: Session = Depends(get_db)):
-    """
-    Create a new user manually
-    """
+    """Create a new user"""
     try:
-        # Check if user already exists
         existing_user = db.query(User).filter(User.email == user.email).first()
         if existing_user:
             raise HTTPException(status_code=400, detail="User already exists")
-        
-        # Create new user
+
         db_user = User(
             email=user.email,
             name=user.name,
@@ -124,7 +131,6 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
         db.add(db_user)
         db.commit()
         db.refresh(db_user)
-        
         return db_user
     except HTTPException:
         raise
@@ -133,9 +139,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
 
 @app.get("/api/users", response_model=List[UserResponse])
 async def get_all_users(db: Session = Depends(get_db)):
-    """
-    Get all users
-    """
+    """Get all users"""
     try:
         users = db.query(User).all()
         return users
@@ -144,9 +148,7 @@ async def get_all_users(db: Session = Depends(get_db)):
 
 @app.get("/api/users/{email}", response_model=UserResponse)
 async def get_user(email: str, db: Session = Depends(get_db)):
-    """
-    Get user by email
-    """
+    """Get user by email"""
     try:
         user = db.query(User).filter(User.email == email).first()
         if not user:
@@ -157,22 +159,367 @@ async def get_user(email: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching user: {str(e)}")
 
-@app.get("/api/chat-history/{email}")
-async def get_chat_history(email: str, db: Session = Depends(get_db)):
-    """
-    Get chat history for a specific user
-    """
+@app.delete("/api/users/{email}")
+async def delete_user(email: str, db: Session = Depends(get_db)):
+    """Delete a user"""
     try:
-        # Check if user exists
         user = db.query(User).filter(User.email == email).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
-        # Get chat history
+
+        db.query(ChatHistory).filter(ChatHistory.email == email).delete()
+        db.delete(user)
+        db.commit()
+        return {"message": f"User {email} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+
+# ==================== PRODUCT MANAGEMENT ====================
+
+@app.post("/api/products", response_model=ProductResponse)
+async def create_product(product: ProductCreate, db: Session = Depends(get_db)):
+    """Create a new product"""
+    try:
+        db_product = Product(
+            name=product.name,
+            category=product.category,
+            description=product.description,
+            specifications=product.specifications,
+            price=product.price
+        )
+        db.add(db_product)
+        db.commit()
+        db.refresh(db_product)
+        return db_product
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating product: {str(e)}")
+
+@app.get("/api/products", response_model=List[ProductResponse])
+async def get_all_products(category: str = None, db: Session = Depends(get_db)):
+    """Get all products, optionally filter by category"""
+    try:
+        query = db.query(Product)
+        if category:
+            query = query.filter(Product.category.ilike(f"%{category}%"))
+        products = query.all()
+        return products
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching products: {str(e)}")
+
+@app.get("/api/products/{product_id}", response_model=ProductResponse)
+async def get_product(product_id: int, db: Session = Depends(get_db)):
+    """Get product by ID"""
+    try:
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+        return product
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching product: {str(e)}")
+
+@app.put("/api/products/{product_id}", response_model=ProductResponse)
+async def update_product(product_id: int, product: ProductCreate, db: Session = Depends(get_db)):
+    """Update a product"""
+    try:
+        db_product = db.query(Product).filter(Product.id == product_id).first()
+        if not db_product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        db_product.name = product.name
+        db_product.category = product.category
+        db_product.description = product.description
+        db_product.specifications = product.specifications
+        db_product.price = product.price
+
+        db.commit()
+        db.refresh(db_product)
+        return db_product
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating product: {str(e)}")
+
+@app.delete("/api/products/{product_id}")
+async def delete_product(product_id: int, db: Session = Depends(get_db)):
+    """Delete a product"""
+    try:
+        product = db.query(Product).filter(Product.id == product_id).first()
+        if not product:
+            raise HTTPException(status_code=404, detail="Product not found")
+
+        db.delete(product)
+        db.commit()
+        return {"message": f"Product {product_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting product: {str(e)}")
+
+# ==================== TECHNICIAN MANAGEMENT ====================
+
+@app.post("/api/technicians", response_model=TechnicianResponse)
+async def create_technician(technician: TechnicianCreate, db: Session = Depends(get_db)):
+    """Create a new technician"""
+    try:
+        db_technician = Technician(
+            name=technician.name,
+            speciality=technician.speciality,
+            contact=technician.contact,
+            email=technician.email,
+            experience_years=technician.experience_years
+        )
+        db.add(db_technician)
+        db.commit()
+        db.refresh(db_technician)
+        return db_technician
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating technician: {str(e)}")
+
+@app.get("/api/technicians", response_model=List[TechnicianResponse])
+async def get_all_technicians(speciality: str = None, db: Session = Depends(get_db)):
+    """Get all technicians, optionally filter by speciality"""
+    try:
+        query = db.query(Technician)
+        if speciality:
+            query = query.filter(Technician.speciality.ilike(f"%{speciality}%"))
+        technicians = query.all()
+        return technicians
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching technicians: {str(e)}")
+
+@app.get("/api/technicians/{technician_id}", response_model=TechnicianResponse)
+async def get_technician(technician_id: int, db: Session = Depends(get_db)):
+    """Get technician by ID"""
+    try:
+        technician = db.query(Technician).filter(Technician.id == technician_id).first()
+        if not technician:
+            raise HTTPException(status_code=404, detail="Technician not found")
+        return technician
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching technician: {str(e)}")
+
+@app.put("/api/technicians/{technician_id}", response_model=TechnicianResponse)
+async def update_technician(technician_id: int, technician: TechnicianCreate, db: Session = Depends(get_db)):
+    """Update a technician"""
+    try:
+        db_technician = db.query(Technician).filter(Technician.id == technician_id).first()
+        if not db_technician:
+            raise HTTPException(status_code=404, detail="Technician not found")
+
+        db_technician.name = technician.name
+        db_technician.speciality = technician.speciality
+        db_technician.contact = technician.contact
+        db_technician.email = technician.email
+        db_technician.experience_years = technician.experience_years
+
+        db.commit()
+        db.refresh(db_technician)
+        return db_technician
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating technician: {str(e)}")
+
+@app.delete("/api/technicians/{technician_id}")
+async def delete_technician(technician_id: int, db: Session = Depends(get_db)):
+    """Delete a technician"""
+    try:
+        technician = db.query(Technician).filter(Technician.id == technician_id).first()
+        if not technician:
+            raise HTTPException(status_code=404, detail="Technician not found")
+
+        db.delete(technician)
+        db.commit()
+        return {"message": f"Technician {technician_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting technician: {str(e)}")
+
+# ==================== SALESMAN MANAGEMENT ====================
+
+@app.post("/api/salesmen", response_model=SalesmanResponse)
+async def create_salesman(salesman: SalesmanCreate, db: Session = Depends(get_db)):
+    """Create a new salesman"""
+    try:
+        db_salesman = Salesman(
+            name=salesman.name,
+            speciality=salesman.speciality,
+            contact=salesman.contact,
+            email=salesman.email
+        )
+        db.add(db_salesman)
+        db.commit()
+        db.refresh(db_salesman)
+        return db_salesman
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating salesman: {str(e)}")
+
+@app.get("/api/salesmen", response_model=List[SalesmanResponse])
+async def get_all_salesmen(speciality: str = None, db: Session = Depends(get_db)):
+    """Get all salesmen, optionally filter by speciality"""
+    try:
+        query = db.query(Salesman)
+        if speciality:
+            query = query.filter(Salesman.speciality.ilike(f"%{speciality}%"))
+        salesmen = query.all()
+        return salesmen
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching salesmen: {str(e)}")
+
+@app.get("/api/salesmen/{salesman_id}", response_model=SalesmanResponse)
+async def get_salesman(salesman_id: int, db: Session = Depends(get_db)):
+    """Get salesman by ID"""
+    try:
+        salesman = db.query(Salesman).filter(Salesman.id == salesman_id).first()
+        if not salesman:
+            raise HTTPException(status_code=404, detail="Salesman not found")
+        return salesman
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching salesman: {str(e)}")
+
+@app.put("/api/salesmen/{salesman_id}", response_model=SalesmanResponse)
+async def update_salesman(salesman_id: int, salesman: SalesmanCreate, db: Session = Depends(get_db)):
+    """Update a salesman"""
+    try:
+        db_salesman = db.query(Salesman).filter(Salesman.id == salesman_id).first()
+        if not db_salesman:
+            raise HTTPException(status_code=404, detail="Salesman not found")
+
+        db_salesman.name = salesman.name
+        db_salesman.speciality = salesman.speciality
+        db_salesman.contact = salesman.contact
+        db_salesman.email = salesman.email
+
+        db.commit()
+        db.refresh(db_salesman)
+        return db_salesman
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating salesman: {str(e)}")
+
+@app.delete("/api/salesmen/{salesman_id}")
+async def delete_salesman(salesman_id: int, db: Session = Depends(get_db)):
+    """Delete a salesman"""
+    try:
+        salesman = db.query(Salesman).filter(Salesman.id == salesman_id).first()
+        if not salesman:
+            raise HTTPException(status_code=404, detail="Salesman not found")
+
+        db.delete(salesman)
+        db.commit()
+        return {"message": f"Salesman {salesman_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting salesman: {str(e)}")
+
+# ==================== EMPLOYEE MANAGEMENT ====================
+
+@app.post("/api/employees", response_model=EmployeeResponse)
+async def create_employee(employee: EmployeeCreate, db: Session = Depends(get_db)):
+    """Create a new employee"""
+    try:
+        db_employee = Employee(
+            name=employee.name,
+            position=employee.position,
+            department=employee.department,
+            contact=employee.contact,
+            email=employee.email
+        )
+        db.add(db_employee)
+        db.commit()
+        db.refresh(db_employee)
+        return db_employee
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error creating employee: {str(e)}")
+
+@app.get("/api/employees", response_model=List[EmployeeResponse])
+async def get_all_employees(department: str = None, db: Session = Depends(get_db)):
+    """Get all employees, optionally filter by department"""
+    try:
+        query = db.query(Employee)
+        if department:
+            query = query.filter(Employee.department.ilike(f"%{department}%"))
+        employees = query.all()
+        return employees
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching employees: {str(e)}")
+
+@app.get("/api/employees/{employee_id}", response_model=EmployeeResponse)
+async def get_employee(employee_id: int, db: Session = Depends(get_db)):
+    """Get employee by ID"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        return employee
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error fetching employee: {str(e)}")
+
+@app.put("/api/employees/{employee_id}", response_model=EmployeeResponse)
+async def update_employee(employee_id: int, employee: EmployeeCreate, db: Session = Depends(get_db)):
+    """Update an employee"""
+    try:
+        db_employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not db_employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+
+        db_employee.name = employee.name
+        db_employee.position = employee.position
+        db_employee.department = employee.department
+        db_employee.contact = employee.contact
+        db_employee.email = employee.email
+
+        db.commit()
+        db.refresh(db_employee)
+        return db_employee
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error updating employee: {str(e)}")
+
+@app.delete("/api/employees/{employee_id}")
+async def delete_employee(employee_id: int, db: Session = Depends(get_db)):
+    """Delete an employee"""
+    try:
+        employee = db.query(Employee).filter(Employee.id == employee_id).first()
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+
+        db.delete(employee)
+        db.commit()
+        return {"message": f"Employee {employee_id} deleted successfully"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error deleting employee: {str(e)}")
+
+# ==================== CHAT HISTORY ====================
+
+@app.get("/api/chat-history/{email}")
+async def get_chat_history(email: str, db: Session = Depends(get_db)):
+    """Get chat history for a specific user"""
+    try:
+        user = db.query(User).filter(User.email == email).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
         chat_history = db.query(ChatHistory).filter(
             ChatHistory.email == email
         ).order_by(ChatHistory.date.desc()).all()
-        
+
         return {
             "email": email,
             "name": user.name,
@@ -190,42 +537,14 @@ async def get_chat_history(email: str, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching chat history: {str(e)}")
 
-@app.delete("/api/users/{email}")
-async def delete_user(email: str, db: Session = Depends(get_db)):
-    """
-    Delete a user and their chat history
-    """
-    try:
-        # Delete user
-        user = db.query(User).filter(User.email == email).first()
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        
-        # Delete chat history
-        db.query(ChatHistory).filter(ChatHistory.email == email).delete()
-        
-        # Delete user
-        db.delete(user)
-        db.commit()
-        
-        return {"message": f"User {email} deleted successfully"}
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
-
 @app.get("/api/health")
 async def health_check():
-    """
-    Health check endpoint
-    """
+    """Health check endpoint"""
     return {
         "status": "healthy",
-        "services": {
-            "database": "connected",
-            "pinecone": "connected",
-            "gemini": "connected"
-        }
+        "service": "Metro Chatbot",
+        "version": "2.0.0",
+        "database": "connected"
     }
 
 if __name__ == "__main__":
