@@ -114,3 +114,4 @@ class ChatResponse(BaseModel):
     recommends: Recommends
     next_step: List[str]
     debug: Dict[str, Any]
+    session_state: Optional[Dict[str, Any]] = None

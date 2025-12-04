@@ -409,5 +409,6 @@ class ChatbotService:
         # Update session
         session_state["temp_data"] = temp_data
         response["debug"]["session_state"] = session_state
+        response["session_state"] = session_state  # Add session_state at top level for frontend access
 
         return response
