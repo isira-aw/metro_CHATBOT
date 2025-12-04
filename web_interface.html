@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ChatGPT Style RAG Chatbot</title>
+    <title>RAG Chatbot - Full Interface</title>
 
     <style>
         * {
@@ -13,43 +13,95 @@
         }
 
         body {
-            font-family: Arial, sans-serif;
-            background: #f7f7f8;
-            height: 100vh;
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
         }
 
-        .chat-wrapper {
-            width: 900px;
-            height: 90vh;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
             background: white;
-            border: 1px solid #ddd;
-            border-radius: 10px;
-            display: flex;
-            flex-direction: column;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
             overflow: hidden;
         }
 
-        .chat-header {
-            padding: 18px;
-            background: white;
-            border-bottom: 1px solid #e5e5e5;
-            font-size: 20px;
-            font-weight: bold;
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 8px;
         }
 
         .status {
             text-align: center;
-            padding: 8px;
-            font-size: 12px;
-            color: #666;
-            border-bottom: 1px solid #eee;
+            padding: 10px;
+            font-size: 13px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
         }
 
-        .status.connected { color: #10a37f; }
-        .status.error { color: #d33; }
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .tabs {
+            display: flex;
+            background: #f8f9fa;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            text-align: center;
+            cursor: pointer;
+            border: none;
+            background: transparent;
+            font-size: 15px;
+            font-weight: 500;
+            color: #495057;
+            transition: all 0.3s;
+        }
+
+        .tab:hover {
+            background: #e9ecef;
+        }
+
+        .tab.active {
+            background: white;
+            color: #667eea;
+            border-bottom: 3px solid #667eea;
+        }
+
+        .tab-content {
+            display: none;
+            padding: 20px;
+            min-height: 500px;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        /* Chat Styles */
+        .chat-wrapper {
+            display: flex;
+            flex-direction: column;
+            height: 600px;
+        }
 
         .messages {
             flex: 1;
@@ -57,33 +109,38 @@
             padding: 20px;
             display: flex;
             flex-direction: column;
-            gap: 18px;
+            gap: 15px;
             background: #f7f7f8;
+            border-radius: 8px;
+            margin-bottom: 15px;
         }
 
         .msg {
-            max-width: 75%;
+            max-width: 70%;
             padding: 12px 16px;
-            border-radius: 10px;
+            border-radius: 12px;
             line-height: 1.5;
             white-space: pre-wrap;
+            word-wrap: break-word;
         }
 
         .user {
             align-self: flex-end;
-            background: #d1e8ff;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
         }
 
         .bot {
             align-self: flex-start;
-            background: #e9e9e9;
+            background: #e9ecef;
+            color: #212529;
         }
 
         .typing {
             width: 60px;
-            height: 25px;
-            border-radius: 10px;
-            background: #e5e5e5;
+            height: 30px;
+            border-radius: 12px;
+            background: #e9ecef;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -91,10 +148,10 @@
         }
 
         .dot {
-            width: 6px;
-            height: 6px;
+            width: 7px;
+            height: 7px;
             border-radius: 50%;
-            background: #666;
+            background: #667eea;
             animation: bounce 1.4s infinite;
         }
 
@@ -107,9 +164,6 @@
         }
 
         .input-area {
-            padding: 16px;
-            background: white;
-            border-top: 1px solid #eee;
             display: flex;
             gap: 10px;
         }
@@ -118,36 +172,287 @@
             flex: 1;
             padding: 12px;
             border-radius: 8px;
-            border: 1px solid #ccc;
+            border: 1px solid #ced4da;
             resize: none;
-            height: 55px;
+            height: 60px;
             font-size: 15px;
             outline: none;
+            font-family: inherit;
+        }
+
+        textarea:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
 
         button {
-            padding: 12px 18px;
-            background: #10a37f;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
             border-radius: 8px;
             cursor: pointer;
             font-size: 15px;
+            font-weight: 600;
+            transition: transform 0.2s;
         }
+
+        button:hover {
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* Form Styles */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .form-group input,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ced4da;
+            border-radius: 8px;
+            font-size: 15px;
+            font-family: inherit;
+        }
+
+        .form-group input:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-group textarea {
+            min-height: 150px;
+            resize: vertical;
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        /* Table Styles */
+        .table-container {
+            overflow-x: auto;
+            margin-top: 20px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #495057;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 13px;
+            margin-right: 5px;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-info {
+            background: #17a2b8;
+        }
+
+        .alert {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .alert-success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+
+        .alert-error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+
+        .alert-info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+
+        .history-item {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            border-left: 4px solid #667eea;
+        }
+
+        .history-meta {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .conversation-item {
+            margin-bottom: 10px;
+            padding: 8px;
+            background: white;
+            border-radius: 6px;
+        }
+
+        .conversation-label {
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .user-label { color: #667eea; }
+        .bot-label { color: #28a745; }
     </style>
 </head>
 <body>
-    <div class="chat-wrapper">
-        <div class="chat-header">RAG Chatbot</div>
-        <div class="status" id="status">Connecting...</div>
-
-        <div class="messages" id="messages">
-            <div class="msg bot">Welcome! Type "Hello" to begin.</div>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 RAG Chatbot Interface</h1>
+            <p>LangChain + Gemini + Pinecone + PostgreSQL</p>
         </div>
 
-        <div class="input-area">
-            <textarea id="input" placeholder="Type your message..."></textarea>
-            <button onclick="sendMsg()">Send</button>
+        <div class="status" id="status">Connecting to server...</div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('chat')">💬 Chat</button>
+            <button class="tab" onclick="switchTab('documents')">📄 Documents</button>
+            <button class="tab" onclick="switchTab('users')">👥 Users</button>
+            <button class="tab" onclick="switchTab('history')">📜 History</button>
+        </div>
+
+        <!-- Chat Tab -->
+        <div id="chat" class="tab-content active">
+            <div class="chat-wrapper">
+                <div class="messages" id="messages">
+                    <div class="msg bot">👋 Welcome! I'm your RAG chatbot. How can I help you today?</div>
+                </div>
+
+                <div class="input-area">
+                    <textarea id="chatInput" placeholder="Type your message here..."></textarea>
+                    <button onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documents Tab -->
+        <div id="documents" class="tab-content">
+            <h2 style="margin-bottom: 20px;">📄 Add Documents to Pinecone</h2>
+            <div id="docAlert"></div>
+
+            <form onsubmit="addDocument(event)">
+                <div class="form-group">
+                    <label>Document Text *</label>
+                    <textarea id="docText" placeholder="Enter document text to add to the knowledge base..." required></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Metadata (JSON format, optional)</label>
+                    <input type="text" id="docMetadata" placeholder='{"source": "manual", "category": "example"}' />
+                    <small style="color: #6c757d;">Example: {"source": "user_upload", "topic": "technology"}</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit">Add Document</button>
+                    <button type="button" onclick="clearDocForm()">Clear</button>
+                </div>
+            </form>
+        </div>
+
+        <!-- Users Tab -->
+        <div id="users" class="tab-content">
+            <h2 style="margin-bottom: 20px;">👥 User Management</h2>
+            <div id="userAlert"></div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px;">
+                <div>
+                    <h3 style="margin-bottom: 15px;">Create New User</h3>
+                    <form onsubmit="createUser(event)">
+                        <div class="form-group">
+                            <label>Email *</label>
+                            <input type="email" id="userEmail" placeholder="user@example.com" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Name *</label>
+                            <input type="text" id="userName" placeholder="John Doe" required />
+                        </div>
+
+                        <div class="form-group">
+                            <label>Mobile Number *</label>
+                            <input type="tel" id="userMobile" placeholder="+1234567890" required />
+                        </div>
+
+                        <div class="form-actions">
+                            <button type="submit">Create User</button>
+                            <button type="button" onclick="clearUserForm()">Clear</button>
+                        </div>
+                    </form>
+                </div>
+
+                <div>
+                    <h3 style="margin-bottom: 15px;">All Users</h3>
+                    <button onclick="loadUsers()" style="margin-bottom: 15px;">🔄 Refresh Users</button>
+                    <div id="usersList"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Tab -->
+        <div id="history" class="tab-content">
+            <h2 style="margin-bottom: 20px;">📜 Chat History</h2>
+            <div id="historyAlert"></div>
+
+            <div class="form-group">
+                <label>Enter User Email</label>
+                <div style="display: flex; gap: 10px;">
+                    <input type="email" id="historyEmail" placeholder="user@example.com" style="flex: 1;" />
+                    <button onclick="loadHistory()">Load History</button>
+                </div>
+            </div>
+
+            <div id="historyContent" style="margin-top: 30px;"></div>
         </div>
     </div>
 
@@ -156,7 +461,39 @@ const API_URL = 'http://localhost:8000';
 let sessionState = null;
 let waiting = false;
 
-function addMessage(text, isUser) {
+// ==================== Utility Functions ====================
+
+function switchTab(tabName) {
+    // Update tab buttons
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    event.target.classList.add('active');
+
+    // Update tab content
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById(tabName).classList.add('active');
+
+    // Load data for specific tabs
+    if (tabName === 'users') {
+        loadUsers();
+    }
+}
+
+function updateStatus(text, type = '') {
+    const statusEl = document.getElementById('status');
+    statusEl.textContent = text;
+    statusEl.className = 'status';
+    if (type) statusEl.classList.add(type);
+}
+
+function showAlert(elementId, message, type = 'success') {
+    const alertEl = document.getElementById(elementId);
+    alertEl.innerHTML = `<div class="alert alert-${type}">${message}</div>`;
+    setTimeout(() => alertEl.innerHTML = '', 5000);
+}
+
+// ==================== Chat Functions ====================
+
+function addChatMessage(text, isUser) {
     const msgBox = document.getElementById('messages');
     const div = document.createElement('div');
     div.className = 'msg ' + (isUser ? 'user' : 'bot');
@@ -176,26 +513,25 @@ function showTyping() {
 }
 
 function hideTyping() {
-    const t = document.getElementById('typing');
-    if (t) t.remove();
+    const typingEl = document.getElementById('typing');
+    if (typingEl) typingEl.remove();
 }
 
-async function sendMsg() {
+async function sendMessage() {
     if (waiting) return;
 
-    const input = document.getElementById('input');
+    const input = document.getElementById('chatInput');
     const text = input.value.trim();
     if (!text) return;
 
-    addMessage(text, true);
+    addChatMessage(text, true);
     input.value = '';
-
     waiting = true;
     showTyping();
-    updateStatus('Bot is typing...');
+    updateStatus('🤖 Bot is thinking...');
 
     try {
-        const res = await fetch(`${API_URL}/api/chat`, {
+        const response = await fetch(`${API_URL}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -206,36 +542,266 @@ async function sendMsg() {
 
         hideTyping();
 
-        if (!res.ok) throw new Error();
-        const data = await res.json();
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
 
-        addMessage(data.bot_message, false);
+        const data = await response.json();
+        addChatMessage(data.bot_message, false);
         sessionState = data.session_state;
-
-        updateStatus('Connected - Ready', 'connected');
-    } catch (err) {
+        updateStatus('✅ Connected - Ready', 'connected');
+    } catch (error) {
         hideTyping();
-        addMessage('⚠️ Error connecting to server', false);
-        updateStatus('Server Error', 'error');
+        addChatMessage('⚠️ Error: ' + error.message, false);
+        updateStatus('❌ Server Error', 'error');
     }
 
     waiting = false;
 }
 
-function updateStatus(text, type = '') {
-    const s = document.getElementById('status');
-    s.textContent = text;
-    s.className = 'status';
-    if (type) s.classList.add(type);
+// Allow Enter to send (Shift+Enter for new line)
+document.addEventListener('DOMContentLoaded', () => {
+    const chatInput = document.getElementById('chatInput');
+    chatInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            sendMessage();
+        }
+    });
+});
+
+// ==================== Document Functions ====================
+
+async function addDocument(event) {
+    event.preventDefault();
+
+    const text = document.getElementById('docText').value.trim();
+    const metadataStr = document.getElementById('docMetadata').value.trim();
+
+    if (!text) {
+        showAlert('docAlert', 'Please enter document text', 'error');
+        return;
+    }
+
+    let metadata = null;
+    if (metadataStr) {
+        try {
+            metadata = JSON.parse(metadataStr);
+        } catch (e) {
+            showAlert('docAlert', 'Invalid JSON in metadata field', 'error');
+            return;
+        }
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/documents/add`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ text, metadata })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add document');
+        }
+
+        const data = await response.json();
+        showAlert('docAlert', `✅ ${data.message} (${data.chunks_processed} chunks processed)`, 'success');
+        clearDocForm();
+    } catch (error) {
+        showAlert('docAlert', '❌ Error: ' + error.message, 'error');
+    }
 }
+
+function clearDocForm() {
+    document.getElementById('docText').value = '';
+    document.getElementById('docMetadata').value = '';
+}
+
+// ==================== User Functions ====================
+
+async function createUser(event) {
+    event.preventDefault();
+
+    const email = document.getElementById('userEmail').value.trim();
+    const name = document.getElementById('userName').value.trim();
+    const mobile_number = document.getElementById('userMobile').value.trim();
+
+    try {
+        const response = await fetch(`${API_URL}/api/users`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, name, mobile_number })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to create user');
+        }
+
+        const data = await response.json();
+        showAlert('userAlert', `✅ User created: ${data.name} (${data.email})`, 'success');
+        clearUserForm();
+        loadUsers();
+    } catch (error) {
+        showAlert('userAlert', '❌ Error: ' + error.message, 'error');
+    }
+}
+
+function clearUserForm() {
+    document.getElementById('userEmail').value = '';
+    document.getElementById('userName').value = '';
+    document.getElementById('userMobile').value = '';
+}
+
+async function loadUsers() {
+    try {
+        const response = await fetch(`${API_URL}/api/users`);
+
+        if (!response.ok) {
+            throw new Error('Failed to fetch users');
+        }
+
+        const users = await response.json();
+        const usersListEl = document.getElementById('usersList');
+
+        if (users.length === 0) {
+            usersListEl.innerHTML = '<div class="alert alert-info">No users found</div>';
+            return;
+        }
+
+        let html = '<div class="table-container"><table><thead><tr><th>Name</th><th>Email</th><th>Mobile</th><th>Actions</th></tr></thead><tbody>';
+
+        users.forEach(user => {
+            html += `
+                <tr>
+                    <td>${user.name}</td>
+                    <td>${user.email}</td>
+                    <td>${user.mobile_number}</td>
+                    <td>
+                        <button class="btn-small btn-info" onclick="viewUserHistory('${user.email}')">View History</button>
+                        <button class="btn-small btn-danger" onclick="deleteUser('${user.email}')">Delete</button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        html += '</tbody></table></div>';
+        usersListEl.innerHTML = html;
+    } catch (error) {
+        showAlert('userAlert', '❌ Error loading users: ' + error.message, 'error');
+    }
+}
+
+async function deleteUser(email) {
+    if (!confirm(`Are you sure you want to delete user ${email}?`)) {
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/users/${encodeURIComponent(email)}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to delete user');
+        }
+
+        const data = await response.json();
+        showAlert('userAlert', '✅ ' + data.message, 'success');
+        loadUsers();
+    } catch (error) {
+        showAlert('userAlert', '❌ Error: ' + error.message, 'error');
+    }
+}
+
+function viewUserHistory(email) {
+    document.getElementById('historyEmail').value = email;
+    switchTab('history');
+    // Trigger the tab switch manually
+    document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+    document.querySelectorAll('.tab')[3].classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+    document.getElementById('history').classList.add('active');
+    loadHistory();
+}
+
+// ==================== History Functions ====================
+
+async function loadHistory() {
+    const email = document.getElementById('historyEmail').value.trim();
+
+    if (!email) {
+        showAlert('historyAlert', 'Please enter an email address', 'error');
+        return;
+    }
+
+    try {
+        const response = await fetch(`${API_URL}/api/chat-history/${encodeURIComponent(email)}`);
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to load history');
+        }
+
+        const data = await response.json();
+        const historyContentEl = document.getElementById('historyContent');
+
+        if (data.chat_sessions.length === 0) {
+            historyContentEl.innerHTML = `
+                <div class="alert alert-info">
+                    No chat history found for ${data.name} (${data.email})
+                </div>
+            `;
+            return;
+        }
+
+        let html = `<h3 style="margin-bottom: 20px;">Chat History for ${data.name} (${data.email})</h3>`;
+
+        data.chat_sessions.forEach((session, index) => {
+            html += `
+                <div class="history-item">
+                    <div class="history-meta">
+                        <strong>Session ${data.chat_sessions.length - index}</strong>
+                        <span>${new Date(session.date).toLocaleString()}</span>
+                    </div>
+            `;
+
+            session.conversation.forEach(msg => {
+                const isUser = msg.user !== undefined;
+                html += `
+                    <div class="conversation-item">
+                        <div class="conversation-label ${isUser ? 'user-label' : 'bot-label'}">
+                            ${isUser ? '👤 User' : '🤖 Bot'}
+                        </div>
+                        <div>${isUser ? msg.user : msg.bot}</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+        });
+
+        historyContentEl.innerHTML = html;
+    } catch (error) {
+        showAlert('historyAlert', '❌ Error: ' + error.message, 'error');
+    }
+}
+
+// ==================== Initialization ====================
 
 window.onload = async () => {
     try {
-        const res = await fetch(`${API_URL}/api/health`);
-        if (res.ok) updateStatus('Connected - Ready', 'connected');
-        else updateStatus('Server offline', 'error');
+        const response = await fetch(`${API_URL}/api/health`);
+        if (response.ok) {
+            const data = await response.json();
+            updateStatus('✅ Connected - All services healthy', 'connected');
+        } else {
+            updateStatus('⚠️ Server offline', 'error');
+        }
     } catch {
-        updateStatus('Server offline', 'error');
+        updateStatus('❌ Cannot connect to server', 'error');
     }
 };
 </script>
