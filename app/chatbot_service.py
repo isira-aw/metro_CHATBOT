@@ -1,11 +1,19 @@
 from app.database import SessionLocal, User, Product, Technician, Salesman, Employee, ChatHistory
-from typing import Dict, List, Tuple
+from app.llm_service import LLMService
+from typing import Dict, List, Tuple, Optional
 import re
 from datetime import datetime
 import json
 
 class ChatbotService:
     def __init__(self):
+        # Initialize LLM service for intelligent routing
+        try:
+            self.llm_service = LLMService()
+        except Exception as e:
+            print(f"Warning: LLM service initialization failed: {e}")
+            self.llm_service = None
+
         # Conversation states
         self.STATES = {
             "START": "start",
@@ -77,8 +85,8 @@ class ChatbotService:
         finally:
             db.close()
 
-    def search_products(self, query: str, category: str = None) -> List[str]:
-        """Search products based on query"""
+    def search_products(self, query: str, category: str = None, max_results: int = 5) -> List[Dict]:
+        """Search products based on query - Returns detailed product information"""
         db = SessionLocal()
         try:
             products_query = db.query(Product)
@@ -89,163 +97,144 @@ class ChatbotService:
             products = products_query.filter(
                 (Product.name.ilike(f"%{query}%")) |
                 (Product.description.ilike(f"%{query}%"))
-            ).limit(3).all()
+            ).limit(max_results).all()
 
-            return [p.name for p in products] if products else []
+            return [{
+                "name": p.name,
+                "category": p.category,
+                "description": p.description,
+                "specifications": p.specifications,
+                "price": p.price
+            } for p in products] if products else []
         finally:
             db.close()
 
-    def search_technicians(self, speciality: str = None) -> List[Dict[str, str]]:
-        """Search technicians by speciality"""
+    def search_technicians(self, specialty: str = "", max_results: int = 3) -> List[Dict[str, str]]:
+        """Search technicians by specialty"""
         db = SessionLocal()
         try:
             techs_query = db.query(Technician)
-            if speciality:
-                techs_query = techs_query.filter(Technician.speciality.ilike(f"%{speciality}%"))
+            if specialty:
+                techs_query = techs_query.filter(Technician.speciality.ilike(f"%{specialty}%"))
 
-            techs = techs_query.limit(2).all()
-            return [{"name": t.name, "speciality": t.speciality, "contact": t.contact} for t in techs]
+            techs = techs_query.limit(max_results).all()
+            return [{
+                "name": t.name,
+                "speciality": t.speciality,
+                "contact": t.contact,
+                "email": t.email,
+                "experience_years": t.experience_years
+            } for t in techs]
         finally:
             db.close()
 
-    def search_salesmen(self, speciality: str = None) -> List[Dict[str, str]]:
-        """Search salesmen by speciality"""
+    def search_salesmen(self, specialty: str = "", max_results: int = 3) -> List[Dict[str, str]]:
+        """Search salesmen by specialty"""
         db = SessionLocal()
         try:
             sales_query = db.query(Salesman)
-            if speciality:
-                sales_query = sales_query.filter(Salesman.speciality.ilike(f"%{speciality}%"))
+            if specialty:
+                sales_query = sales_query.filter(Salesman.speciality.ilike(f"%{specialty}%"))
 
-            sales = sales_query.limit(2).all()
-            return [{"name": s.name, "speciality": s.speciality, "contact": s.contact} for s in sales]
+            sales = sales_query.limit(max_results).all()
+            return [{
+                "name": s.name,
+                "speciality": s.speciality,
+                "contact": s.contact,
+                "email": s.email
+            } for s in sales]
         finally:
             db.close()
 
-    def analyze_intent(self, message: str) -> Dict[str, any]:
-        """Analyze user message to determine intent"""
-        message_lower = message.lower()
+    def search_employees(self, department: str = "", position: str = "", max_results: int = 3) -> List[Dict]:
+        """Search employees by department or position"""
+        db = SessionLocal()
+        try:
+            emp_query = db.query(Employee)
+            if department:
+                emp_query = emp_query.filter(Employee.department.ilike(f"%{department}%"))
+            if position:
+                emp_query = emp_query.filter(Employee.position.ilike(f"%{position}%"))
 
-        # Check for problem/fault keywords
-        problem_keywords = ['problem', 'issue', 'fault', 'not working', 'broken', 'repair', 'fix', 'diagnose', 'troubleshoot']
-        has_problem = any(kw in message_lower for kw in problem_keywords)
+            employees = emp_query.limit(max_results).all()
+            return [{
+                "name": e.name,
+                "position": e.position,
+                "department": e.department,
+                "contact": e.contact,
+                "email": e.email
+            } for e in employees]
+        finally:
+            db.close()
 
-        # Check for buying intent
-        buy_keywords = ['buy', 'purchase', 'price', 'cost', 'quote', 'how much', 'want to buy']
-        wants_to_buy = any(kw in message_lower for kw in buy_keywords)
+    def get_user_history(self, user_email: str, limit: int = 5) -> List[Dict]:
+        """Get user's chat history"""
+        db = SessionLocal()
+        try:
+            history = db.query(ChatHistory).filter(
+                ChatHistory.email == user_email
+            ).order_by(ChatHistory.date.desc()).limit(limit).all()
 
-        # Identify category
-        category = None
-        if 'solar' in message_lower:
-            category = 'solar'
-        elif 'generator' in message_lower:
-            category = 'generator'
-        elif 'inverter' in message_lower:
-            category = 'inverter'
-        elif 'electrical' in message_lower or 'electric' in message_lower:
-            category = 'electrical'
+            return [{
+                "date": h.date.isoformat(),
+                "conversation": h.conversation
+            } for h in history]
+        finally:
+            db.close()
 
-        return {
-            "has_problem": has_problem,
-            "wants_to_buy": wants_to_buy,
-            "category": category
-        }
-
-    def generate_technical_response(self, message: str, intent: Dict, user_profile: Dict = None) -> Tuple[str, Dict, List, str]:
+    def generate_llm_response(self, message: str, user_profile: Dict = None, conversation_history: List = None) -> Tuple[str, Dict, List]:
         """
-        Generate technical response with recommendations
-        Returns: (bot_message, recommends, next_steps, extra_info)
+        Generate response using LLM-based routing and database queries
+        Returns: (bot_message, recommends, next_steps)
         """
-        message_lower = message.lower()
+        if not self.llm_service:
+            # Fallback if LLM service is not available
+            return (
+                "I apologize, but the intelligent response system is currently unavailable. Please try again later.",
+                {"products": [], "technicians": [], "salesman": [], "extra_info": ""},
+                ["Try again", "Start over"]
+            )
 
-        # Default values
-        products = []
-        technicians = []
-        salesmen = []
-        extra_info = ""
-        next_steps = ["Ask another question", "View products", "Start over"]
+        try:
+            # Use LLM service to plan and execute database queries
+            result = self.llm_service.plan_and_execute(
+                user_message=message,
+                conversation_history=conversation_history,
+                user_profile=user_profile,
+                database_executor=self  # Pass self as executor so LLM can call our methods
+            )
 
-        # Personalize greeting if user profile available
-        greeting = f"{user_profile.get('name', 'there')}, " if user_profile else ""
+            bot_message = result.get("bot_message", "I'm not sure how to respond to that.")
+            fetched_data = result.get("fetched_data", {})
 
-        # Handle based on intent
-        if intent["has_problem"]:
-            # User has a problem - recommend technician
-            technicians = self.search_technicians(intent["category"])
+            # Build recommends structure from fetched data
+            recommends = {
+                "products": fetched_data.get("search_products", []),
+                "technicians": fetched_data.get("search_technicians", []),
+                "salesman": fetched_data.get("search_salesmen", []),
+                "employees": fetched_data.get("search_employees", []),
+                "extra_info": ""
+            }
 
-            if intent["category"] == "solar":
-                bot_message = f"{greeting}I understand you're having issues with your solar system. Common problems include inverter faults, panel degradation, or wiring issues. I recommend consulting with our specialized technicians."
-                extra_info = "A qualified technician can diagnose and resolve your solar system issues."
-            elif intent["category"] == "generator":
-                bot_message = f"{greeting}Generator issues can range from fuel system problems to electrical faults. Our expert technicians can help diagnose and repair your generator."
-                extra_info = "Generator problems should be addressed by experienced technicians for safety."
-            elif intent["category"] == "inverter":
-                bot_message = f"{greeting}Inverter problems often involve power conversion issues or software glitches. Let me connect you with our inverter specialists."
-                extra_info = "Our technicians specialize in inverter troubleshooting and repair."
-            else:
-                bot_message = f"{greeting}I can help you troubleshoot your issue. Our technicians are available to diagnose and resolve electrical system problems."
-                extra_info = "Technical support recommended for proper fault diagnosis."
+            # Generate next steps based on what data was fetched
+            next_steps = ["Ask another question"]
+            if recommends["products"]:
+                next_steps.append("View more products")
+            if recommends["technicians"]:
+                next_steps.append("Contact technician")
+            if recommends["salesman"]:
+                next_steps.append("Contact sales")
+            next_steps.append("Start over")
 
-            if technicians:
-                next_steps = ["Contact technician", "Ask another question", "Start over"]
+            return bot_message, recommends, next_steps
 
-        elif intent["wants_to_buy"]:
-            # User wants to buy - recommend salesman and products
-            products = self.search_products(message, intent["category"])
-            salesmen = self.search_salesmen(intent["category"])
-
-            if intent["category"] == "solar":
-                bot_message = f"{greeting}Great! We offer a range of solar systems from 3kW to 50kW. Our solutions include panels, inverters, batteries, and complete installation. Let me recommend some products and connect you with our sales team."
-                extra_info = "Our sales staff can provide customized quotes based on your requirements."
-            elif intent["category"] == "generator":
-                bot_message = f"{greeting}We have various generator options including portable and standby units from 5kW to 500kW. I'll recommend suitable products and our sales specialists can help you choose."
-                extra_info = "Sales staff can help determine the right generator size for your needs."
-            elif intent["category"] == "inverter":
-                bot_message = f"{greeting}We stock inverters from leading brands for solar, UPS, and power backup applications. Our sales team can guide you to the perfect solution."
-                extra_info = "Contact our sales team for pricing and availability."
-            else:
-                bot_message = f"{greeting}I can help you find the right products for your needs. Let me show you some options and connect you with our sales team."
-                extra_info = "Our sales staff can provide detailed product information and quotes."
-
-            if salesmen:
-                next_steps = ["Contact salesman", "View more products", "Ask another question", "Start over"]
-
-        else:
-            # General technical question
-            if 'load calculation' in message_lower:
-                bot_message = f"{greeting}Load calculation is essential for sizing your electrical system. You need to sum up the wattage of all devices, apply diversity factors, and account for surge loads. Would you like me to connect you with a technician for a detailed assessment?"
-                technicians = self.search_technicians("electrical")
-                extra_info = "Professional load calculation ensures proper system sizing."
-
-            elif 'solar' in message_lower:
-                bot_message = f"{greeting}Solar systems convert sunlight to electricity using photovoltaic panels. Key components include solar panels, inverters, charge controllers, and batteries. System size depends on your energy needs and available roof space. Would you like product recommendations or technical consultation?"
-                products = self.search_products("solar", "solar")
-                salesmen = self.search_salesmen("solar")
-                extra_info = "Solar systems can significantly reduce electricity costs."
-
-            elif 'generator' in message_lower:
-                bot_message = f"{greeting}Generators provide backup power during outages. Choose between portable and standby models. Size depends on your power requirements. Key factors include fuel type, runtime, and automatic transfer switches. Need help selecting a generator?"
-                products = self.search_products("generator", "generator")
-                salesmen = self.search_salesmen("generator")
-                extra_info = "Proper generator sizing is crucial for reliable backup power."
-
-            elif 'inverter' in message_lower:
-                bot_message = f"{greeting}Inverters convert DC power to AC power. Types include pure sine wave, modified sine wave, and grid-tie inverters. Selection depends on your application - solar, UPS, or power backup. What's your specific need?"
-                products = self.search_products("inverter", "inverter")
-                salesmen = self.search_salesmen("inverter")
-                extra_info = "Inverter selection depends on power requirements and application."
-
-            else:
-                bot_message = f"{greeting}I'm here to help with solar systems, generators, inverters, and electrical systems. I can assist with load calculations, fault diagnosis, product selection, and technical support. What would you like to know?"
-                next_steps = ["Ask about solar", "Ask about generators", "Ask about inverters", "Start over"]
-
-        recommends = {
-            "products": products if products else [],
-            "technicians": technicians if technicians else [],
-            "salesman": salesmen if salesmen else [],
-            "extra_info": extra_info
-        }
-
-        return bot_message, recommends, next_steps, extra_info
+        except Exception as e:
+            print(f"Error in LLM response generation: {e}")
+            return (
+                "I apologize, but I encountered an error processing your question. Could you please rephrase?",
+                {"products": [], "technicians": [], "salesman": [], "extra_info": ""},
+                ["Try again", "Start over"]
+            )
 
     def process_message(self, user_message: str, session_state: Dict = None,
                        user_profile: Dict = None, conversation_history: List = None) -> Dict:
@@ -311,9 +300,8 @@ class ChatbotService:
 
         # ASK QUESTIONS (No login required)
         elif current_state == self.STATES["ASK_QUESTIONS"]:
-            intent = self.analyze_intent(user_message)
-            bot_msg, recommends, next_steps, extra = self.generate_technical_response(
-                user_message, intent, user_profile
+            bot_msg, recommends, next_steps = self.generate_llm_response(
+                user_message, user_profile, conversation_history
             )
             response["bot_message"] = bot_msg
             response["recommends"] = recommends
@@ -390,21 +378,24 @@ class ChatbotService:
         # ACTIVE CHAT (Logged in)
         elif current_state == self.STATES["ACTIVE_CHAT"]:
             user_name = session_state.get("user_name", "")
-            profile = {"name": user_name} if user_name else None
+            user_email = session_state.get("user_email", "")
+            profile = {
+                "name": user_name,
+                "email": user_email
+            } if user_name else None
 
-            intent = self.analyze_intent(user_message)
-            bot_msg, recommends, next_steps, extra = self.generate_technical_response(
-                user_message, intent, profile
+            bot_msg, recommends, next_steps = self.generate_llm_response(
+                user_message, profile, conversation_history
             )
             response["bot_message"] = bot_msg
             response["recommends"] = recommends
             response["next_step"] = next_steps
 
             # Save chat history if logged in
-            if "user_email" in session_state:
+            if user_email:
                 conversation = conversation_history or []
                 conversation.append({"user": user_message, "bot": bot_msg, "time": datetime.utcnow().isoformat()})
-                self.save_chat_history(session_state["user_email"], conversation)
+                self.save_chat_history(user_email, conversation)
 
         # Update session
         session_state["temp_data"] = temp_data
