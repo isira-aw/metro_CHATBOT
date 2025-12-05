@@ -104,9 +104,10 @@ class ChatMessage(BaseModel):
     conversation_history: Optional[List[Dict]] = None
 
 class Recommends(BaseModel):
-    products: List[str]
+    products: List[Dict[str, Any]]  # Changed to support detailed product info
     technicians: List[Dict[str, str]]
     salesman: List[Dict[str, str]]
+    employees: Optional[List[Dict[str, str]]] = []  # Added employees
     extra_info: str
 
 class ChatResponse(BaseModel):
