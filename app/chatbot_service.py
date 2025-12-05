@@ -122,8 +122,8 @@ class ChatbotService:
                 "name": t.name,
                 "speciality": t.speciality,
                 "contact": t.contact,
-                "email": t.email,
-                "experience_years": t.experience_years
+                "email": t.email if t.email else "",
+                "experience_years": str(t.experience_years) if t.experience_years else "0"
             } for t in techs]
         finally:
             db.close()
@@ -141,12 +141,12 @@ class ChatbotService:
                 "name": s.name,
                 "speciality": s.speciality,
                 "contact": s.contact,
-                "email": s.email
+                "email": s.email if s.email else ""
             } for s in sales]
         finally:
             db.close()
 
-    def search_employees(self, department: str = "", position: str = "", max_results: int = 3) -> List[Dict]:
+    def search_employees(self, department: str = "", position: str = "", max_results: int = 3) -> List[Dict[str, str]]:
         """Search employees by department or position"""
         db = SessionLocal()
         try:
@@ -162,7 +162,7 @@ class ChatbotService:
                 "position": e.position,
                 "department": e.department,
                 "contact": e.contact,
-                "email": e.email
+                "email": e.email if e.email else ""
             } for e in employees]
         finally:
             db.close()
