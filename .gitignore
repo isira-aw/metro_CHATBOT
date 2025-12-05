@@ -39,5 +39,10 @@ Thumbs.db
 *.db
 *.sqlite3
 
+# Environment variables (CRITICAL - contains API keys)
+.env
+.env.*
+!.env.example
+
 # Docker
 docker-compose.override.yml
