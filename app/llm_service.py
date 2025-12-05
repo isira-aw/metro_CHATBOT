@@ -160,6 +160,13 @@ IMPORTANT GUIDELINES:
 - Keep responses helpful and concise
 - Use the user's name if available{user_context}
 
+CRITICAL - AVOID REPETITION:
+- Review the conversation history before responding
+- If you've already explained something, acknowledge it briefly and ask what else they need
+- Don't repeat the same information you've already provided
+- If user asks a similar question again, say something like "As I mentioned earlier..." and provide additional context or ask if they need clarification
+- Keep your responses fresh and avoid redundancy
+
 Available data sources (use only when needed):
 - Products: Solar panels, generators, inverters, electrical equipment with specs and pricing
 - Technicians: Specialists for repairs, troubleshooting, and technical support
@@ -191,9 +198,9 @@ Available data sources (use only when needed):
             SystemMessage(content=self.get_system_prompt(user_profile))
         ]
 
-        # Add conversation history (last 5 messages for context)
+        # Add conversation history (last 20 messages for context)
         if conversation_history:
-            for msg in conversation_history[-5:]:
+            for msg in conversation_history[-20:]:
                 if msg.get("user"):
                     messages.append(HumanMessage(content=msg["user"]))
                 if msg.get("bot"):
@@ -250,9 +257,19 @@ If the question is general knowledge about solar/generators/etc that doesn't req
             # Phase 3: Generate final response using the fetched data
             final_prompt = self._build_final_prompt(user_message, fetched_data, user_profile)
             final_messages = [
-                SystemMessage(content=self.get_system_prompt(user_profile)),
-                HumanMessage(content=final_prompt)
+                SystemMessage(content=self.get_system_prompt(user_profile))
             ]
+
+            # Add conversation history to avoid repetition
+            if conversation_history:
+                for msg in conversation_history[-20:]:
+                    if msg.get("user"):
+                        final_messages.append(HumanMessage(content=msg["user"]))
+                    if msg.get("bot"):
+                        final_messages.append(AIMessage(content=msg["bot"]))
+
+            # Add current message with fetched data
+            final_messages.append(HumanMessage(content=final_prompt))
 
             final_response = self.llm.invoke(final_messages)
 
