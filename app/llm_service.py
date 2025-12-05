@@ -138,25 +138,29 @@ class LLMService:
         if user_profile:
             user_context = f"\nUser Profile: {user_profile.get('name', 'Guest')} (Email: {user_profile.get('email', 'Not logged in')})"
 
-        return f"""You are an intelligent technical assistant for Metro, a company specializing in solar systems, generators, inverters, and electrical systems.
+        return f"""You are a helpful technical assistant for Metro, a company specializing in solar systems, generators, inverters, and electrical systems.
 
 Your job is to:
-1. Analyze the user's question/request
-2. Decide which database queries are needed to answer properly
-3. Use the provided tools to fetch relevant data
-4. Generate a helpful, direct response using the actual data
+1. Analyze the user's message to understand their intent
+2. Determine if you need specific data from the database to answer properly
+3. Only fetch data when the user needs specific information (products, contacts, technical help)
+4. Respond naturally and conversationally when appropriate
+
+CRITICAL - When to fetch data vs when NOT to:
+- DON'T fetch data for: greetings, general questions, explanations, or casual conversation
+- DO fetch data when user needs: specific products, pricing, technical support contacts, sales help, or has a problem to solve
 
 IMPORTANT GUIDELINES:
-- ALWAYS fetch relevant data before answering technical questions
-- Use specific data from the database in your responses
-- Be direct and helpful - avoid generic "I'm here to help" messages
-- If user has a problem/fault, search for technicians
-- If user wants to buy/get quotes, search for products and salesmen
-- Provide specific recommendations based on actual database data
-- Keep responses concise but informative
-- Use the user's name if available in profile{user_context}
+- Be conversational and natural - respond to greetings appropriately
+- Only fetch database data when user asks for something specific
+- If user has a technical problem/fault → search for technicians
+- If user wants to buy specific products/get quotes → search for products and salesmen
+- If user asks general questions about how things work → answer from knowledge, no data needed
+- Use specific data from database when you do fetch it
+- Keep responses helpful and concise
+- Use the user's name if available{user_context}
 
-Available data sources:
+Available data sources (use only when needed):
 - Products: Solar panels, generators, inverters, electrical equipment with specs and pricing
 - Technicians: Specialists for repairs, troubleshooting, and technical support
 - Salesmen: Sales staff for product recommendations and quotes
@@ -274,12 +278,34 @@ If the question is general knowledge about solar/generators/etc that doesn't req
         In production, use proper function calling APIs.
         """
         tool_calls = []
-        user_lower = user_message.lower()
+        user_lower = user_message.lower().strip()
 
-        # Heuristics to determine what to fetch
-        problem_keywords = ['problem', 'issue', 'fault', 'not working', 'broken', 'repair', 'fix', 'diagnose', 'troubleshoot', 'error']
-        buy_keywords = ['buy', 'purchase', 'price', 'cost', 'quote', 'how much', 'want to buy', 'looking for']
-        product_keywords = ['solar', 'generator', 'inverter', 'panel', 'battery', 'product', 'equipment']
+        # First, check if this is a greeting or general conversation - NO DATA NEEDED
+        greeting_patterns = ['hi', 'hello', 'hey', 'good morning', 'good afternoon', 'good evening',
+                           'greetings', 'howdy', 'what\'s up', 'whats up', 'sup']
+        general_questions = ['how are you', 'who are you', 'what can you do', 'help me',
+                           'what is this', 'thank you', 'thanks', 'bye', 'goodbye']
+
+        # If it's just a greeting or very short general message, don't fetch data
+        if any(user_lower.startswith(pattern) for pattern in greeting_patterns) or \
+           any(pattern in user_lower for pattern in general_questions) or \
+           len(user_lower.split()) <= 2:  # Very short messages
+            return []  # No data needed for conversational messages
+
+        # Check for general "how does X work" or "what is X" questions - answer from knowledge
+        knowledge_patterns = ['how does', 'how do', 'what is', 'what are', 'explain', 'tell me about']
+        if any(pattern in user_lower for pattern in knowledge_patterns) and \
+           not any(word in user_lower for word in ['recommend', 'suggest', 'need', 'want', 'price', 'cost', 'buy']):
+            # General knowledge question, no specific product needed
+            return []
+
+        # Now check for specific intents that require data
+        problem_keywords = ['problem', 'issue', 'fault', 'not working', 'broken', 'repair', 'fix',
+                          'diagnose', 'troubleshoot', 'error', 'failing', 'stopped working']
+        buy_keywords = ['buy', 'purchase', 'price', 'cost', 'quote', 'how much', 'want to buy',
+                       'looking for', 'need', 'want', 'recommend', 'suggest', 'shopping for']
+        product_keywords = ['solar', 'generator', 'inverter', 'panel', 'battery', 'product',
+                          'equipment', 'system']
 
         has_problem = any(kw in user_lower for kw in problem_keywords)
         wants_to_buy = any(kw in user_lower for kw in buy_keywords)
@@ -307,8 +333,8 @@ If the question is general knowledge about solar/generators/etc that doesn't req
                 }
             })
 
-        if wants_to_buy or (mentions_product and not has_problem):
-            # User wants products or info about products
+        if wants_to_buy:
+            # User wants to buy - fetch products and salesmen
             tool_calls.append({
                 "name": "search_products",
                 "parameters": {
@@ -317,7 +343,6 @@ If the question is general knowledge about solar/generators/etc that doesn't req
                     "max_results": 5
                 }
             })
-            # Also fetch salesmen
             tool_calls.append({
                 "name": "search_salesmen",
                 "parameters": {
@@ -326,7 +351,7 @@ If the question is general knowledge about solar/generators/etc that doesn't req
                 }
             })
         elif mentions_product and not has_problem:
-            # General product inquiry
+            # Just asking about products, not buying yet
             tool_calls.append({
                 "name": "search_products",
                 "parameters": {
@@ -351,7 +376,8 @@ If the question is general knowledge about solar/generators/etc that doesn't req
         if user_profile:
             prompt += f"User profile: {user_profile.get('name', 'Guest')}\n\n"
 
-        if fetched_data:
+        if fetched_data and any(fetched_data.values()):
+            # We have actual data - use it in the response
             prompt += "I have fetched the following relevant data from our database:\n\n"
 
             for tool_name, data in fetched_data.items():
@@ -364,16 +390,28 @@ If the question is general knowledge about solar/generators/etc that doesn't req
                         prompt += f"{json.dumps(data, indent=2)}\n"
                     prompt += "\n"
 
-        prompt += """
-Now generate a helpful, direct response to the user's question using the above data.
+            prompt += """
+Now generate a helpful, direct response using the above data.
 
 IMPORTANT:
 - Use specific details from the fetched data (product names, specs, prices, technician names, etc.)
-- Be direct and answer the question - don't give generic "I'm here to help" messages
+- Be direct and answer the question
 - If recommending products, mention specific names and key features
 - If suggesting technicians/salesmen, provide their names and contact info
 - Keep the response concise but informative (2-4 sentences)
 - Speak naturally and professionally
+"""
+        else:
+            # No data fetched - this is a conversational message or general question
+            prompt += """
+This is a general question or conversational message that doesn't require specific database data.
+
+Respond naturally and helpfully:
+- If it's a greeting, greet them warmly and briefly introduce yourself as Metro's assistant
+- If it's a general question, answer from your knowledge about solar, generators, inverters, electrical systems
+- Keep it conversational and friendly
+- If appropriate, mention you can help with specific products, technical support, or sales inquiries
+- Keep responses concise (1-3 sentences)
 """
 
         return prompt
