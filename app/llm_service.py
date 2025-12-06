@@ -31,6 +31,55 @@ class LLMService:
         # Define available database query functions
         self.tools = self._define_tools()
 
+    def extract_search_keywords(self, user_message: str) -> str:
+        """
+        Extract relevant search keywords from user message using LLM
+        Returns cleaned keywords suitable for database searching
+        """
+        try:
+            prompt = f"""Extract the key search terms from this user message that would be useful for searching a product database.
+
+User message: "{user_message}"
+
+Rules:
+- Extract only the most relevant product-related keywords
+- Include technical specifications (e.g., "10kW", "5000W")
+- Include product types (e.g., "solar panel", "generator", "inverter")
+- Remove filler words ("I need", "I want", "Can you show me", etc.)
+- Return only the keywords separated by spaces
+- Maximum 5 keywords
+
+Examples:
+Input: "I need a 10kW solar panel for my home to reduce electricity bills"
+Output: "10kW solar panel"
+
+Input: "Can you show me generators that can power a house during outages?"
+Output: "generator house power"
+
+Input: "What inverters do you have?"
+Output: "inverter"
+
+Now extract keywords from the user message above. Return ONLY the keywords, nothing else."""
+
+            response = self.llm.invoke([HumanMessage(content=prompt)])
+            keywords = response.content.strip()
+
+            # If extraction failed or returned empty, fall back to simple extraction
+            if not keywords or len(keywords) < 2:
+                # Simple fallback: extract words that look like products or specs
+                words = user_message.lower().split()
+                product_words = ['solar', 'generator', 'inverter', 'panel', 'battery', 'electrical']
+                keywords = ' '.join([w for w in words if any(pw in w for pw in product_words) or any(c.isdigit() for c in w)])
+                if not keywords:
+                    keywords = user_message  # Last resort: use full message
+
+            return keywords
+
+        except Exception as e:
+            print(f"Error extracting keywords: {e}")
+            # Fallback to original message if extraction fails
+            return user_message
+
     def _define_tools(self) -> List[Dict]:
         """Define the database query tools available to the LLM"""
         return [
@@ -335,10 +384,12 @@ If the question is general knowledge about solar/generators/etc that doesn't req
 
         if wants_to_buy:
             # User wants to buy - fetch products and salesmen
+            # Extract keywords for better product search
+            search_keywords = self.extract_search_keywords(user_message)
             tool_calls.append({
                 "name": "search_products",
                 "parameters": {
-                    "query": user_message,
+                    "query": search_keywords,
                     "category": category,
                     "max_results": 5
                 }
@@ -352,10 +403,12 @@ If the question is general knowledge about solar/generators/etc that doesn't req
             })
         elif mentions_product and not has_problem:
             # Just asking about products, not buying yet
+            # Extract keywords for better product search
+            search_keywords = self.extract_search_keywords(user_message)
             tool_calls.append({
                 "name": "search_products",
                 "parameters": {
-                    "query": user_message,
+                    "query": search_keywords,
                     "category": category,
                     "max_results": 3
                 }
@@ -377,11 +430,15 @@ If the question is general knowledge about solar/generators/etc that doesn't req
             prompt += f"User profile: {user_profile.get('name', 'Guest')}\n\n"
 
         if fetched_data and any(fetched_data.values()):
-            # We have actual data - use it in the response
+            # We have actual data - use TWO-PHASE RESPONSE approach
             prompt += "I have fetched the following relevant data from our database:\n\n"
 
+            has_results = False
+            empty_searches = []
+
             for tool_name, data in fetched_data.items():
-                if data:
+                if data and len(data) > 0:
+                    has_results = True
                     prompt += f"=== {tool_name.replace('_', ' ').title()} ===\n"
                     if isinstance(data, list):
                         for idx, item in enumerate(data, 1):
@@ -389,29 +446,100 @@ If the question is general knowledge about solar/generators/etc that doesn't req
                     else:
                         prompt += f"{json.dumps(data, indent=2)}\n"
                     prompt += "\n"
+                else:
+                    empty_searches.append(tool_name.replace('_', ' '))
+
+            if empty_searches:
+                prompt += f"\n⚠️ NOTE: No results found for: {', '.join(empty_searches)}\n"
+                prompt += "You should acknowledge this and offer alternatives or suggestions.\n\n"
 
             prompt += """
-Now generate a helpful, direct response using the above data.
+CRITICAL - Use a TWO-PHASE RESPONSE structure:
 
-IMPORTANT:
-- Use specific details from the fetched data (product names, specs, prices, technician names, etc.)
-- Be direct and answer the question
-- If recommending products, mention specific names and key features
-- If suggesting technicians/salesmen, provide their names and contact info
-- Keep the response concise but informative (2-4 sentences)
-- Speak naturally and professionally
+📋 PHASE 1 - Answer the Question (Using Your Knowledge):
+- First, provide a helpful, accurate answer to their question using your AI knowledge
+- Explain the concept, solution, or provide relevant information
+- Be educational and informative
+- This should be 2-3 sentences of valuable information
+- DO NOT mention database results yet
+
+🎯 PHASE 2 - Database Recommendations (Based on Our Data):
+- After answering, present relevant database results as specific recommendations
+- Use this format based on what data you have:
+
+  If products found:
+  "Based on our inventory, I recommend:
+  • [Product Name] - [Key specs] - [Price]
+  • [Product Name] - [Key specs] - [Price]"
+
+  If technicians found:
+  "I can connect you with our specialists:
+  • [Name] - [Specialty] - Contact: [Contact]"
+
+  If salesmen found:
+  "Our sales team can help:
+  • [Name] - [Specialty] - Contact: [Contact]"
+
+EXAMPLE RESPONSE:
+"Solar panels convert sunlight into electricity using photovoltaic cells. A 10kW system typically covers a medium-sized home's energy needs and can reduce your electricity bills by 70-90%. The installation usually takes 1-2 days depending on roof type.
+
+Based on our inventory, I recommend:
+• SunPower 10kW Solar System - High efficiency monocrystalline panels, 25-year warranty - $12,500
+• Canadian Solar 10.5kW Kit - Durable polycrystalline design, great value - $9,800
+
+Our solar specialists can help you:
+• John Smith - Solar Installation Expert - Contact: 555-0123"
+
+IMPORTANT RULES:
+- Always do Phase 1 first (answer with knowledge)
+- Then Phase 2 (present database recommendations)
+- Use specific details from database (names, prices, specs)
+- If empty results in a category, skip that section
+- Keep total response 4-6 sentences
+- Be natural and professional
+
+HANDLING EMPTY RESULTS:
+If some searches returned no results, acknowledge it professionally and offer alternatives:
+"I don't currently have [product/specialist] in our database, but I can:
+1. Check with our team and get back to you
+2. Suggest similar alternatives
+3. Connect you with our general sales/technical team who can help"
+
+Example: "While I don't have specific 15kW solar systems in our current inventory, we do have 10kW and 20kW options that might work. Our solar specialists can also custom-design a system for your needs."
 """
         else:
-            # No data fetched - this is a conversational message or general question
+            # No data fetched - still provide helpful knowledge-based response
             prompt += """
-This is a general question or conversational message that doesn't require specific database data.
+No database data was needed for this query. Provide a helpful response using your knowledge.
 
-Respond naturally and helpfully:
-- If it's a greeting, greet them warmly and briefly introduce yourself as Metro's assistant
-- If it's a general question, answer from your knowledge about solar, generators, inverters, electrical systems
-- Keep it conversational and friendly
-- If appropriate, mention you can help with specific products, technical support, or sales inquiries
-- Keep responses concise (1-3 sentences)
+STRUCTURE:
+1. If greeting: Greet warmly + introduce yourself as Metro's AI assistant for solar, generators, and electrical systems
+2. If general question: Answer accurately using your knowledge about:
+   - Solar systems (panels, inverters, batteries, installation)
+   - Generators (types, sizing, fuel types, applications)
+   - Inverters (pure sine wave, modified sine wave, sizing)
+   - Electrical systems (wiring, safety, maintenance)
+
+3. Then briefly mention what you CAN help with:
+   "I can help you find specific products, connect you with technicians, or answer technical questions about [relevant topic]."
+
+EXAMPLE RESPONSES:
+
+User: "Hi there"
+Response: "Hello! I'm Metro's AI assistant, here to help you with solar systems, generators, inverters, and electrical solutions. I can help you find products, connect with specialists, or answer any technical questions you have. What would you like to know?"
+
+User: "How does an inverter work?"
+Response: "An inverter converts DC (direct current) electricity from batteries or solar panels into AC (alternating current) that your home appliances use. Pure sine wave inverters provide clean power suitable for sensitive electronics, while modified sine wave inverters are more affordable but better for simple devices like lights and fans. I can help you find the right inverter for your needs or connect you with our technical team for installation advice."
+
+User: "What's better, solar or generator?"
+Response: "It depends on your needs! Solar is great for long-term savings and eco-friendly power, with no fuel costs but dependent on sunlight. Generators provide reliable backup power anytime but require fuel and maintenance. Many people use both - solar for daily use and a generator as backup. I can recommend specific systems based on your power needs and budget."
+
+RULES:
+- Answer accurately using technical knowledge
+- Be helpful and educational
+- Keep it concise (2-3 sentences)
+- Mention relevant services you can provide
+- Stay professional and friendly
 """
 
         return prompt
