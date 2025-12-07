@@ -20,6 +20,9 @@ wheels/
 .installed.cfg
 *.egg
 
+.env
+.venv/
+env/
 
 # IDE
 .vscode/

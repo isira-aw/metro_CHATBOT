@@ -1,10 +1,9 @@
 """
 LLM Service for intelligent database routing and response generation.
-Uses Google's Gemini with function calling to decide what data to fetch.
+Uses Groq's Llama model with function calling to decide what data to fetch.
 """
 
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.schema import HumanMessage, SystemMessage, AIMessage
+from groq import Groq
 from typing import Dict, List, Optional, Any
 import os
 from dotenv import load_dotenv
@@ -15,18 +14,14 @@ load_dotenv()
 
 class LLMService:
     def __init__(self):
-        """Initialize the LLM service with Gemini"""
-        api_key = os.getenv("GOOGLE_API_KEY")
+        """Initialize the LLM service with Groq"""
+        api_key = os.getenv("GROQ_API_KEY")
         if not api_key:
-            raise ValueError("GOOGLE_API_KEY not found in environment variables")
+            raise ValueError("GROQ_API_KEY not found in environment variables")
 
-        # Initialize Gemini with function calling support
-        self.llm = ChatGoogleGenerativeAI(
-            model="gemini-2.0-flash",
-            google_api_key=api_key,
-            temperature=0.3,  # Lower temperature for more consistent routing
-            convert_system_message_to_human=True
-        )
+        # Initialize Groq client
+        self.client = Groq(api_key=api_key)
+        self.model = "llama-3.3-70b-versatile"  # or "llama3-70b-8192"
 
         # Define available database query functions
         self.tools = self._define_tools()
@@ -188,21 +183,21 @@ Available data sources (use only when needed):
         """
         # Build conversation context
         messages = [
-            SystemMessage(content=self.get_system_prompt(user_profile))
+            {"role": "system", "content": self.get_system_prompt(user_profile)}
         ]
 
         # Add conversation history (last 5 messages for context)
         if conversation_history:
             for msg in conversation_history[-5:]:
                 if msg.get("user"):
-                    messages.append(HumanMessage(content=msg["user"]))
+                    messages.append({"role": "user", "content": msg["user"]})
                 if msg.get("bot"):
-                    messages.append(AIMessage(content=msg["bot"]))
+                    messages.append({"role": "assistant", "content": msg["bot"]})
 
         # Add current message
-        messages.append(HumanMessage(content=user_message))
+        messages.append({"role": "user", "content": user_message})
 
-        # Phase 1: Let LLM decide what data to fetch (with function calling)
+        # Phase 1: Let LLM decide what data to fetch
         try:
             # First LLM call: routing decision
             routing_prompt = f"""Analyze this user message and decide what data you need to fetch from the database to answer properly.
@@ -220,17 +215,20 @@ Based on your analysis, call the appropriate tool(s) to fetch the data you need.
 If the question is general knowledge about solar/generators/etc that doesn't require specific product data, you can answer directly without calling tools."""
 
             routing_messages = [
-                SystemMessage(content=self.get_system_prompt(user_profile)),
-                HumanMessage(content=routing_prompt)
+                {"role": "system", "content": self.get_system_prompt(user_profile)},
+                {"role": "user", "content": routing_prompt}
             ]
 
             # Get LLM's decision on what to fetch
-            # Note: For function calling, we'll use a simpler approach with structured output
-            response = self.llm.invoke(routing_messages)
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=routing_messages,
+                temperature=0.3,
+                max_tokens=1024
+            )
 
             # Parse the response to determine what data to fetch
-            # This is a simplified version - in production, you'd use proper function calling
-            tool_calls = self._parse_tool_calls(response.content, user_message)
+            tool_calls = self._parse_tool_calls(response.choices[0].message.content, user_message)
 
             # Phase 2: Execute the database queries
             fetched_data = {}
@@ -250,14 +248,19 @@ If the question is general knowledge about solar/generators/etc that doesn't req
             # Phase 3: Generate final response using the fetched data
             final_prompt = self._build_final_prompt(user_message, fetched_data, user_profile)
             final_messages = [
-                SystemMessage(content=self.get_system_prompt(user_profile)),
-                HumanMessage(content=final_prompt)
+                {"role": "system", "content": self.get_system_prompt(user_profile)},
+                {"role": "user", "content": final_prompt}
             ]
 
-            final_response = self.llm.invoke(final_messages)
+            final_response = self.client.chat.completions.create(
+                model=self.model,
+                messages=final_messages,
+                temperature=0.3,
+                max_tokens=1024
+            )
 
             return {
-                "bot_message": final_response.content,
+                "bot_message": final_response.choices[0].message.content,
                 "fetched_data": fetched_data,
                 "tool_calls": tool_calls
             }
