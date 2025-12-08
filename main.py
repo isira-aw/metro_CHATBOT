@@ -9,9 +9,11 @@ from app.database import (
 from app.models import (
     ChatMessage, ChatResponse, UserCreate, UserResponse,
     ProductCreate, ProductResponse, TechnicianCreate, TechnicianResponse,
-    SalesmanCreate, SalesmanResponse, EmployeeCreate, EmployeeResponse
+    SalesmanCreate, SalesmanResponse, EmployeeCreate, EmployeeResponse,
+    DocumentAdd, DocumentAddResponse
 )
 from app.chatbot_service import ChatbotService
+from app.pinecone_service import PineconeService
 from typing import List
 import uvicorn
 import os
@@ -35,8 +37,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize chatbot service
+# Initialize services
 chatbot_service = ChatbotService()
+pinecone_service = PineconeService()
 
 @app.on_event("startup")
 async def startup_event():
@@ -56,7 +59,8 @@ async def root():
             "products": "/api/products",
             "technicians": "/api/technicians",
             "salesmen": "/api/salesmen",
-            "employees": "/api/employees"
+            "employees": "/api/employees",
+            "documents": "/api/documents/add"
         }
     }
 
@@ -546,6 +550,41 @@ async def health_check():
         "version": "2.0.0",
         "database": "connected"
     }
+
+# ==================== DOCUMENT MANAGEMENT ====================
+
+@app.post("/api/documents/add", response_model=DocumentAddResponse)
+async def add_document(document: DocumentAdd):
+    """
+    Add a document to the Pinecone knowledge base
+
+    Request:
+    {
+        "text": "Document text to add to knowledge base",
+        "metadata": {"source": "manual", "category": "example"}  // optional
+    }
+
+    Response:
+    {
+        "message": "Document added successfully",
+        "chunks_processed": 5
+    }
+    """
+    try:
+        chunks_count = pinecone_service.add_documents(
+            text=document.text,
+            metadata=document.metadata
+        )
+
+        return {
+            "message": "Document added successfully to knowledge base",
+            "chunks_processed": chunks_count
+        }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to add document: {str(e)}"
+        )
 
 if __name__ == "__main__":
     uvicorn.run(
