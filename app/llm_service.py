@@ -139,7 +139,13 @@ Your job is to:
 1. Analyze the user's message to understand their intent
 2. Determine if you need specific data from the database to answer properly
 3. Only fetch data when the user needs specific information (products, contacts, technical help)
-4. Respond naturally and conversationally when appropriate
+4. Respond using ONLY your knowledge base - provide explanations, guidance, and context
+
+CRITICAL - Response Structure:
+- Your responses go in "bot_message" and should contain ONLY knowledge base information
+- SQL data (products, contacts, prices, etc.) is displayed separately to users
+- NEVER include specific SQL data in your responses (no names, prices, contact numbers, etc.)
+- Instead, provide helpful context, explanations, and guidance
 
 CRITICAL - When to fetch data vs when NOT to:
 - DON'T fetch data for: greetings, general questions, explanations, or casual conversation
@@ -151,7 +157,7 @@ IMPORTANT GUIDELINES:
 - If user has a technical problem/fault → search for technicians
 - If user wants to buy specific products/get quotes → search for products and salesmen
 - If user asks general questions about how things work → answer from knowledge, no data needed
-- Use specific data from database when you do fetch it
+- When data IS fetched, explain concepts and provide guidance (but no specific data)
 - Keep responses helpful and concise
 - Use the user's name if available{user_context}
 
@@ -380,41 +386,51 @@ If the question is general knowledge about solar/generators/etc that doesn't req
             prompt += f"User profile: {user_profile.get('name', 'Guest')}\n\n"
 
         if fetched_data and any(fetched_data.values()):
-            # We have actual data - use it in the response
-            prompt += "I have fetched the following relevant data from our database:\n\n"
-
+            # We have fetched data - provide context about what was found
+            data_summary = []
             for tool_name, data in fetched_data.items():
                 if data:
-                    prompt += f"=== {tool_name.replace('_', ' ').title()} ===\n"
-                    if isinstance(data, list):
-                        for idx, item in enumerate(data, 1):
-                            prompt += f"{idx}. {json.dumps(item, indent=2)}\n"
-                    else:
-                        prompt += f"{json.dumps(data, indent=2)}\n"
-                    prompt += "\n"
+                    if isinstance(data, list) and len(data) > 0:
+                        count = len(data)
+                        data_summary.append(f"{count} {tool_name.replace('_', ' ')}")
+
+            prompt += f"Data fetched from database: {', '.join(data_summary)}\n\n"
 
             prompt += """
-Now generate a helpful, direct response using the above data.
+CRITICAL INSTRUCTIONS - READ CAREFULLY:
 
-IMPORTANT:
-- Use specific details from the fetched data (product names, specs, prices, technician names, etc.)
-- Be direct and answer the question
-- If recommending products, mention specific names and key features
-- If suggesting technicians/salesmen, provide their names and contact info
-- Keep the response concise but informative (2-4 sentences)
-- Speak naturally and professionally
+Your response MUST ONLY contain knowledge base information - explanations, guidance, and context.
+DO NOT include any specific SQL data (names, prices, specifications, contact details, etc.) in your response.
+
+The SQL data will be displayed separately to the user, so your job is to:
+1. Provide context and explanation using your knowledge base about the topic
+2. Guide the user on what to look for or consider
+3. Explain concepts related to their question
+4. You can mention THAT data has been found (e.g., "I found some products for you") but DO NOT mention specific details
+
+Examples:
+❌ BAD: "I found the SolarMax 10kW panel for $5000" (includes specific SQL data)
+✅ GOOD: "I found some solar panels that match your needs. When choosing a solar panel, consider the wattage, efficiency rating, and warranty period."
+
+❌ BAD: "Contact John Smith at 555-1234" (includes specific SQL data)
+✅ GOOD: "I found some technicians who specialize in this area. They can help diagnose and fix the issue."
+
+Keep your response concise (2-3 sentences), helpful, and focused on knowledge/guidance.
 """
         else:
             # No data fetched - this is a conversational message or general question
             prompt += """
 This is a general question or conversational message that doesn't require specific database data.
 
-Respond naturally and helpfully:
+Respond naturally and helpfully using your knowledge base:
 - If it's a greeting, greet them warmly and briefly introduce yourself as Metro's assistant
 - If it's a general question, answer from your knowledge about solar, generators, inverters, electrical systems
+- Provide helpful information, tips, and explanations
 - Keep it conversational and friendly
 - If appropriate, mention you can help with specific products, technical support, or sales inquiries
 - Keep responses concise (1-3 sentences)
+
+Remember: Only use knowledge base information in your response. No specific product data, names, or contact details.
 """
 
         return prompt
