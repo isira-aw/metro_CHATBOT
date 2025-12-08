@@ -116,3 +116,12 @@ class ChatResponse(BaseModel):
     next_step: List[str]
     debug: Dict[str, Any]
     session_state: Optional[Dict[str, Any]] = None
+
+# Document Models
+class DocumentAdd(BaseModel):
+    text: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class DocumentAddResponse(BaseModel):
+    message: str
+    chunks_processed: int
