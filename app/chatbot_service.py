@@ -1,5 +1,6 @@
 from app.database import SessionLocal, User, Product, Technician, Salesman, Employee, ChatHistory
 from app.llm_service import LLMService
+from app.classification_service import ClassificationService
 from typing import Dict, List, Tuple, Optional
 import re
 from datetime import datetime
@@ -13,6 +14,14 @@ class ChatbotService:
         except Exception as e:
             print(f"Warning: LLM service initialization failed: {e}")
             self.llm_service = None
+
+        # Initialize classification service for category prediction
+        try:
+            self.classifier = ClassificationService()
+            print("✓ Classification service initialized")
+        except Exception as e:
+            print(f"Warning: Classification service initialization failed: {e}")
+            self.classifier = None
 
         # Conversation states
         self.STATES = {
@@ -184,30 +193,40 @@ class ChatbotService:
 
     def generate_llm_response(self, message: str, user_profile: Dict = None, conversation_history: List = None) -> Tuple[str, Dict, List]:
         """
-        Generate response using LLM-based routing and database queries
+        Generate response using TF-IDF classification and LLM-based routing
         Returns: (bot_message, recommends, next_steps)
         """
         if not self.llm_service:
             # Fallback if LLM service is not available
             return (
                 "I apologize, but the intelligent response system is currently unavailable. Please try again later.",
-                {"products": [], "technicians": [], "salesman": [], "extra_info": ""},
+                {"products": [], "technicians": [], "salesman": [], "employees": [], "extra_info": ""},
                 ["Try again", "Start over"]
             )
 
         try:
-            # Use LLM service to plan and execute database queries
+            # Step 1: Classify the user message into a category
+            category = "common"
+            confidence_scores = {}
+
+            if self.classifier:
+                category, confidence_scores = self.classifier.classify(message)
+                print(f"📊 Category: {category} (confidence: {confidence_scores.get(category, 0):.2f})")
+
+            # Step 2: Use LLM service to plan and execute database queries
             result = self.llm_service.plan_and_execute(
                 user_message=message,
                 conversation_history=conversation_history,
                 user_profile=user_profile,
-                database_executor=self  # Pass self as executor so LLM can call our methods
+                database_executor=self,  # Pass self as executor so LLM can call our methods
+                category=category,  # Pass the predicted category
+                category_confidence=confidence_scores
             )
 
             bot_message = result.get("bot_message", "I'm not sure how to respond to that.")
             fetched_data = result.get("fetched_data", {})
 
-            # Build recommends structure from fetched data
+            # Step 3: Build recommends structure from fetched data
             recommends = {
                 "products": fetched_data.get("search_products", []),
                 "technicians": fetched_data.get("search_technicians", []),
@@ -216,7 +235,27 @@ class ChatbotService:
                 "extra_info": ""
             }
 
-            # Generate next steps based on what data was fetched
+            # Step 4: Filter recommendations based on category (limit to 1-2 suggestions)
+            if self.classifier:
+                max_recommendations = self.classifier.get_max_recommendations(category)
+
+                # Limit each recommendation list to max_recommendations
+                if max_recommendations > 0:
+                    recommends["products"] = recommends["products"][:max_recommendations]
+                    recommends["technicians"] = recommends["technicians"][:max_recommendations]
+                    recommends["salesman"] = recommends["salesman"][:max_recommendations]
+                    recommends["employees"] = recommends["employees"][:max_recommendations]
+                else:
+                    # For 'common' category, don't show recommendations
+                    recommends["products"] = []
+                    recommends["technicians"] = []
+                    recommends["salesman"] = []
+                    recommends["employees"] = []
+
+                # Add category info to extra_info
+                recommends["extra_info"] = f"Category: {category}"
+
+            # Step 5: Generate next steps based on category and fetched data
             next_steps = ["Ask another question"]
             if recommends["products"]:
                 next_steps.append("View more products")
@@ -224,15 +263,19 @@ class ChatbotService:
                 next_steps.append("Contact technician")
             if recommends["salesman"]:
                 next_steps.append("Contact sales")
+            if recommends["employees"]:
+                next_steps.append("View employee details")
             next_steps.append("Start over")
 
             return bot_message, recommends, next_steps
 
         except Exception as e:
             print(f"Error in LLM response generation: {e}")
+            import traceback
+            traceback.print_exc()
             return (
                 "I apologize, but I encountered an error processing your question. Could you please rephrase?",
-                {"products": [], "technicians": [], "salesman": [], "extra_info": ""},
+                {"products": [], "technicians": [], "salesman": [], "employees": [], "extra_info": ""},
                 ["Try again", "Start over"]
             )
 

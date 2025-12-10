@@ -127,20 +127,61 @@ class LLMService:
             }
         ]
 
-    def get_system_prompt(self, user_profile: Optional[Dict] = None) -> str:
-        """Generate system prompt for the LLM"""
+    def get_system_prompt(self, user_profile: Optional[Dict] = None, category: str = "common", category_confidence: Dict = None) -> str:
+        """Generate system prompt for the LLM based on predicted category"""
         user_context = ""
         if user_profile:
             user_context = f"\nUser Profile: {user_profile.get('name', 'Guest')} (Email: {user_profile.get('email', 'Not logged in')})"
 
+        # Adjust response style based on category
+        category_instructions = {
+            "common": """
+CATEGORY: COMMON (General queries, greetings, simple questions)
+Response Style: SHORT and CONCISE
+- Keep responses VERY brief (1 sentence maximum)
+- Don't over-explain or provide unnecessary details
+- For greetings, respond naturally and briefly
+- Don't fetch database data unless explicitly requested""",
+
+            "products": """
+CATEGORY: PRODUCTS (Product inquiries, specifications, pricing)
+Response Style: DETAILED and INFORMATIVE
+- Provide comprehensive information (2-3 sentences)
+- Explain product features, use cases, and benefits
+- Help users understand technical specifications
+- Connect product information to their needs
+- Fetch product data from database and explain the context""",
+
+            "salesman": """
+CATEGORY: SALESMAN (Purchase inquiries, quotes, technical support)
+Response Style: DETAILED and HELPFUL
+- Provide thorough explanations (2-3 sentences)
+- Guide users through the purchasing process
+- Explain technical issues in detail if they have problems
+- Connect users with appropriate sales/support resources
+- Fetch relevant products and salesman contacts""",
+
+            "employees": """
+CATEGORY: EMPLOYEES (Staff inquiries, department information)
+Response Style: DETAILED and PROFESSIONAL
+- Provide complete information (2-3 sentences)
+- Explain department structures and responsibilities
+- Help users find the right person or department
+- Fetch employee data and explain how they can help"""
+        }
+
+        category_instruction = category_instructions.get(category, category_instructions["common"])
+
         return f"""You are a helpful technical assistant for Metro, a company specializing in solar systems, generators, inverters, and electrical systems.
+
+{category_instruction}
 
 Your job is to:
 1. Analyze the user's message to understand their intent
 2. Determine if you need specific data from the database to answer properly
 3. Only fetch data when the user needs specific information (products, contacts, technical help)
 4. Respond using ONLY your knowledge base - provide explanations, guidance, and context
-5. THINK about the question complexity and respond with appropriate length
+5. ADJUST your response length based on the CATEGORY above
 
 CRITICAL - Response Structure:
 - Your responses go in "bot_message" and should contain ONLY knowledge base information
@@ -148,12 +189,9 @@ CRITICAL - Response Structure:
 - NEVER include specific SQL data in your responses (no names, prices, contact numbers, etc.)
 - Instead, provide helpful context, explanations, and guidance
 
-CRITICAL - Response Length (THINK before responding):
-- Simple greetings → Very short (1 sentence): "Hello! I'm Metro's assistant, here to help with solar, generators, and electrical systems."
-- Simple yes/no or factual questions → Short (1 sentence): Direct answer
-- Questions needing advice → Medium (2 sentences): Brief guidance + one helpful tip
-- Complex technical questions → Longer (2-3 sentences): More detailed explanation when truly needed
-- When SQL data is fetched → Medium (1-2 sentences): Brief context about what was found
+CRITICAL - Response Length (FOLLOW CATEGORY GUIDELINES):
+- COMMON category → 1 sentence maximum
+- PRODUCTS, SALESMAN, EMPLOYEES → 2-3 sentences with detailed explanations
 
 CRITICAL - When to fetch data vs when NOT to:
 - DON'T fetch data for: greetings, general questions, explanations, or casual conversation
@@ -162,11 +200,11 @@ CRITICAL - When to fetch data vs when NOT to:
 IMPORTANT GUIDELINES:
 - Be conversational and natural - respond to greetings appropriately
 - Only fetch database data when user asks for something specific
-- If user has a technical problem/fault → search for technicians
+- If user has a technical problem/fault → search for technicians and salesmen
 - If user wants to buy specific products/get quotes → search for products and salesmen
 - If user asks general questions about how things work → answer from knowledge, no data needed
 - When data IS fetched, explain concepts and provide guidance (but no specific data)
-- Match response length to question complexity - don't over-explain simple things
+- Match response length to CATEGORY - common is SHORT, others are DETAILED
 - Use the user's name if available{user_context}
 
 Available data sources (use only when needed):
@@ -181,7 +219,9 @@ Available data sources (use only when needed):
         user_message: str,
         conversation_history: Optional[List[Dict]] = None,
         user_profile: Optional[Dict] = None,
-        database_executor: Optional[Any] = None
+        database_executor: Optional[Any] = None,
+        category: str = "common",
+        category_confidence: Dict = None
     ) -> Dict:
         """
         Main method: LLM decides what data to fetch, executes queries, then generates response
@@ -191,13 +231,15 @@ Available data sources (use only when needed):
             conversation_history: Previous messages in the conversation
             user_profile: User profile info (name, email, etc.)
             database_executor: Object with methods to execute database queries
+            category: Predicted category from TF-IDF classifier
+            category_confidence: Confidence scores for all categories
 
         Returns:
             Dict with bot_message and fetched data
         """
-        # Build conversation context
+        # Build conversation context with category-aware system prompt
         messages = [
-            {"role": "system", "content": self.get_system_prompt(user_profile)}
+            {"role": "system", "content": self.get_system_prompt(user_profile, category, category_confidence)}
         ]
 
         # Add conversation history (last 5 messages for context)
@@ -229,7 +271,7 @@ Based on your analysis, call the appropriate tool(s) to fetch the data you need.
 If the question is general knowledge about solar/generators/etc that doesn't require specific product data, you can answer directly without calling tools."""
 
             routing_messages = [
-                {"role": "system", "content": self.get_system_prompt(user_profile)},
+                {"role": "system", "content": self.get_system_prompt(user_profile, category, category_confidence)},
                 {"role": "user", "content": routing_prompt}
             ]
 
